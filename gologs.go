@@ -30,7 +30,7 @@ func (l Level) String() string {
 	case Error:
 		return "error"
 	}
-	panic(fmt.Sprintf("invalid log level: %v", l))
+	panic(fmt.Sprintf("invalid log level: %v", uint32(l)))
 }
 
 // Logger is anything that provides basic logging functionality.
