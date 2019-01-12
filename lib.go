@@ -35,12 +35,11 @@ func (l Level) String() string {
 }
 
 type event struct {
-	args     []interface{}
-	prefixes [][]byte
-	format   string
-	prefix   string
-	level    Level
-	when     time.Time
+	args   []interface{}
+	format string
+	prefix string
+	level  Level
+	when   time.Time
 }
 
 type Logger interface {
@@ -74,14 +73,6 @@ func (b *Base) log(e *event) {
 	for _, formatter := range b.formatters {
 		formatter(e, &p)
 	}
-
-	// NOTE: Each prefix is appended to the slice, and will be enumerated in
-	// reverse order if the event is logged.
-	for i := len(e.prefixes) - 1; i >= 0; i-- {
-		p = append(p, e.prefixes[i]...)
-	}
-
-	// p = append(p, '\n')
 
 	b.l.Lock()
 	_, _ = b.w.Write(p)
