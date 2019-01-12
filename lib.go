@@ -38,6 +38,7 @@ type event struct {
 	args     []interface{}
 	prefixes [][]byte
 	format   string
+	prefix   string
 	level    Level
 	when     time.Time
 }
@@ -97,37 +98,6 @@ func (b *Base) Admin(format string, args ...interface{}) {
 
 func (b *Base) User(format string, args ...interface{}) {
 	b.log(&event{format: format, args: args, level: User})
-}
-
-// Prefix Logger will prefixe the provided string to logged events, and sends
-// them to the specified Logger.
-type Prefix struct {
-	logger Logger
-	prefix []byte
-}
-
-// NewPrefix returns a Prefix Logger.
-func NewPrefix(logger Logger, prefix string) *Prefix {
-	return &Prefix{logger: logger, prefix: []byte(prefix)}
-}
-
-func (l *Prefix) log(e *event) {
-	// NOTE: Each prefix is appended to the slice, and will be enumerated in
-	// reverse order if the event is logged.
-	e.prefixes = append(e.prefixes, l.prefix)
-	l.logger.log(e)
-}
-
-func (l *Prefix) Dev(format string, args ...interface{}) {
-	l.logger.log(&event{format: format, args: args, level: Dev, prefixes: [][]byte{l.prefix}})
-}
-
-func (l *Prefix) Admin(format string, args ...interface{}) {
-	l.logger.log(&event{format: format, args: args, level: Admin, prefixes: [][]byte{l.prefix}})
-}
-
-func (l *Prefix) User(format string, args ...interface{}) {
-	l.logger.log(&event{format: format, args: args, level: User, prefixes: [][]byte{l.prefix}})
 }
 
 // Filter Logger will only convey events at least the same level as the Filter
@@ -192,30 +162,32 @@ func (l *Filter) log(e *event) {
 // their tracer bit set, causing them to bypass filters on their way to the log.
 type Tracer struct {
 	logger Logger
+	prefix string
 }
 
 // NewTracer returns a Tracer Logger.
 //
-//     tl := NewTracer(logger) // make a trace logger
+//     tl := NewTracer(logger, "[QUERY-1234] ") // make a trace logger
 //     tl.Dev("example: %f", 3.14)
-func NewTracer(logger Logger) *Tracer {
-	return &Tracer{logger: logger}
+func NewTracer(logger Logger, prefix string) *Tracer {
+	return &Tracer{logger: logger, prefix: prefix}
 }
 
 func (l *Tracer) Dev(format string, args ...interface{}) {
-	l.logger.log(&event{format: format, args: args, level: Dev | 4})
+	l.logger.log(&event{prefix: l.prefix, format: format, args: args, level: Dev | 4})
 }
 
 func (l *Tracer) Admin(format string, args ...interface{}) {
-	l.logger.log(&event{format: format, args: args, level: Admin | 4})
+	l.logger.log(&event{prefix: l.prefix, format: format, args: args, level: Admin | 4})
 }
 
 func (l *Tracer) User(format string, args ...interface{}) {
-	l.logger.log(&event{format: format, args: args, level: User | 4})
+	l.logger.log(&event{prefix: l.prefix, format: format, args: args, level: User | 4})
 }
 
 func (l *Tracer) log(e *event) {
 	e.level |= 4
+	e.prefix = l.prefix + e.prefix
 	l.logger.log(e)
 }
 
@@ -276,8 +248,6 @@ func compileFormat(format string) []func(*event, *[]byte) {
 				emitters = append(emitters, messageEmitter)
 			case "timestamp":
 				emitters = append(emitters, timestampEmitter)
-			case "prefixes":
-				emitters = append(emitters, prefixesEmitter)
 			default:
 				// unknown token: just append to buf, wrapped in curly
 				// braces
@@ -341,13 +311,6 @@ func levelEmitter(e *event, bb *[]byte) {
 }
 
 func messageEmitter(e *event, bb *[]byte) {
+	*bb = append(*bb, e.prefix...)
 	*bb = append(*bb, fmt.Sprintf(e.format, e.args...)...)
-}
-
-func prefixesEmitter(e *event, bb *[]byte) {
-	// NOTE: Each prefix is appended to the slice, and will be enumerated in
-	// reverse order if the event is logged.
-	for i := len(e.prefixes) - 1; i >= 0; i-- {
-		*bb = append(*bb, e.prefixes[i]...)
-	}
 }

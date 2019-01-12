@@ -8,7 +8,7 @@ import (
 
 func Example() {
 	bb := new(bytes.Buffer)
-	base := New(bb, "[BASE] ")
+	base := New(bb, "[BASE] {message}")
 	base.Dev("%v %v %v", 3.14, "hello", struct{}{})
 	fmt.Printf("%s", bb.Bytes())
 	// Output:
@@ -38,11 +38,11 @@ func TestBaseAppendsNewline(t *testing.T) {
 	}
 }
 
-func TestPrefix(t *testing.T) {
+func TestTracer(t *testing.T) {
 	t.Run("prefixes emitted in proper order", func(t *testing.T) {
 		bb := new(bytes.Buffer)
 
-		logs := NewPrefix(NewPrefix(New(bb, "[A] "), "[B] "), "[C] ")
+		logs := NewTracer(NewTracer(New(bb, "[A] {message}"), "[B] "), "[C] ")
 
 		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[A] [B] [C] 3.14 hello {}\n"; got != want {
