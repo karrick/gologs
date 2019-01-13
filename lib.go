@@ -36,10 +36,10 @@ func (l Level) String() string {
 
 type event struct {
 	args   []interface{}
-	format string
 	prefix string
-	level  Level
+	format string
 	when   time.Time
+	level  Level
 }
 
 type Logger interface {
@@ -52,9 +52,9 @@ type Logger interface {
 // Base formats the event to a byte slice, ensuring it ends with a newline, and
 // writes its output to its underlying io.Writer.
 type Base struct {
+	formatters []func(*event, *[]byte)
 	w          io.Writer
 	l          sync.Mutex
-	formatters []func(*event, *[]byte)
 }
 
 func New(w io.Writer, template string) *Base {
