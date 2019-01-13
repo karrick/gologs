@@ -38,19 +38,6 @@ func TestBaseAppendsNewline(t *testing.T) {
 	}
 }
 
-func TestTracer(t *testing.T) {
-	t.Run("prefixes emitted in proper order", func(t *testing.T) {
-		bb := new(bytes.Buffer)
-
-		logs := NewTracer(NewTracer(New(bb, "[A] {message}"), "[B] "), "[C] ")
-
-		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
-		if got, want := string(bb.Bytes()), "[A] [B] [C] 3.14 hello {}\n"; got != want {
-			t.Errorf("GOT: %q; WANT: %q", got, want)
-		}
-	})
-}
-
 func TestFilter(t *testing.T) {
 	check := func(t *testing.T, callback func(*Filter), want string) {
 		bb := new(bytes.Buffer)
@@ -93,5 +80,29 @@ func TestFilter(t *testing.T) {
 		t.Run("dev-logger-user-event", func(t *testing.T) {
 			check(t, func(f *Filter) { f.SetDev().User("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 		})
+	})
+}
+
+func TestTracer(t *testing.T) {
+	t.Run("prefixes emitted in proper order", func(t *testing.T) {
+		bb := new(bytes.Buffer)
+
+		logs := NewTracer(NewTracer(New(bb, "[BASE] {message}"), "[TRACER1] "), "[TRACER2] ")
+
+		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
+		if got, want := string(bb.Bytes()), "[BASE] [TRACER1] [TRACER2] 3.14 hello {}\n"; got != want {
+			t.Errorf("GOT: %q; WANT: %q", got, want)
+		}
+	})
+
+	t.Run("tracers emitted regardless of intermediate filters", func(t *testing.T) {
+		bb := new(bytes.Buffer)
+
+		logs := NewTracer(NewFilter(New(bb, "[BASE] {message}")).SetUser(), "[TRACER] ")
+
+		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
+		if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {
+			t.Errorf("GOT: %q; WANT: %q", got, want)
+		}
 	})
 }
