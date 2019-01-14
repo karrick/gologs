@@ -17,19 +17,37 @@ const DefaultLogFormat = "{timestamp} [{level}] {message}"
 type Level uint32
 
 const (
-	Dev   Level = iota // show me all events
-	Admin              // show me detailed operational events
-	User               // show me major operational events
+	Debug Level = iota
+	Verbose
+	Info
+	Warning
+	Error
+)
+
+const (
+	Dev   Level = Debug   // Dev is for developers; show me all events
+	Admin Level = Verbose // Admin is for administrators; show me detailed operational events
+	User  Level = Info    // User is for users; show me major operational events
 )
 
 func (l Level) String() string {
 	switch l {
-	case Dev:
-		return "DEV"
-	case Admin:
-		return "ADMIN"
-	case User:
-		return "USER"
+	case Debug:
+		return "DEBUG"
+	case Verbose:
+		return "VERBOSE"
+	case Info:
+		return "INFO"
+	case Warning:
+		return "WARNING"
+	case Error:
+		return "ERROR"
+		// case Dev:
+		// 	return "DEV"
+		// case Admin:
+		// 	return "ADMIN"
+		// case User:
+		// 	return "USER"
 	}
 	panic(fmt.Sprintf("invalid log level: %v", uint32(l)))
 }
@@ -176,6 +194,9 @@ func (l *Tracer) User(format string, args ...interface{}) {
 	l.logger.log(&event{prefix: l.prefix, format: format, args: args, level: User | 4})
 }
 
+// ??? not sure whether this should be provided. Do we really want Tracer to be
+// used to build loggers on top of? Tracers are supposed to be light-weight and
+// ephemeral.
 func (l *Tracer) log(e *event) {
 	e.level |= 4
 	e.prefix = l.prefix + e.prefix
