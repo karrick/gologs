@@ -16,6 +16,6 @@ func main() {
 	}
 	ProgramName = filepath.Base(ProgramName)
 
-	base := gologs.New(os.Stderr, fmt.Sprintf("[%s] {message}", ProgramName))
+	base := gologs.New(os.Stderr, fmt.Sprintf("{localtime=2006-01-02T15:04:05} [%s] {message}", ProgramName))
 	base.User("%v %v %v", 3.14, "hello", struct{}{})
 }

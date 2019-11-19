@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -259,13 +260,19 @@ func compileFormat(format string) []func(*event, *[]byte) {
 			case "message":
 				emitters = append(emitters, messageEmitter)
 			case "timestamp":
-				emitters = append(emitters, timestampEmitter)
+				// Emulate timestamp format from stdlib log (log.LstdFlags).
+				emitters = append(emitters, makeUTCTimestampEmitter("2006/01/02 15:04:05"))
 			default:
-				// unknown token: just append to buf, wrapped in curly
-				// braces
-				buf = append(buf, '{')
-				buf = append(buf, tok...)
-				buf = append(buf, '}')
+				if strings.HasPrefix(tok, "localtime=") {
+					emitters = append(emitters, makeLocalTimestampEmitter(tok[10:]))
+				} else if strings.HasPrefix(tok, "utctime=") {
+					emitters = append(emitters, makeUTCTimestampEmitter(tok[8:]))
+				} else {
+					// Unknown token: append to buf, wrapped in curly braces.
+					buf = append(buf, '{')
+					buf = append(buf, tok...)
+					buf = append(buf, '}')
+				}
 			}
 			token = token[:0]
 			capturingToken = false
@@ -299,12 +306,6 @@ func appendRune(buf *[]byte, r rune) {
 	*buf = (*buf)[:olen+n]                       // trim buf to actual size used by rune addition
 }
 
-func makeStringEmitter(value string) func(*event, *[]byte) {
-	return func(_ *event, bb *[]byte) {
-		*bb = append(*bb, value...)
-	}
-}
-
 func epochEmitter(e *event, bb *[]byte) {
 	*bb = append(*bb, strconv.FormatInt(e.when.UTC().Unix(), 10)...)
 }
@@ -313,13 +314,26 @@ func iSO8601Emitter(e *event, bb *[]byte) {
 	*bb = append(*bb, e.when.UTC().Format(time.RFC3339)...)
 }
 
-func timestampEmitter(e *event, bb *[]byte) {
-	// emulate timestamp format from stdlib log (log.LstdFlags)
-	*bb = append(*bb, e.when.Format("2006/01/02 15:04:05")...)
-}
-
 func levelEmitter(e *event, bb *[]byte) {
 	*bb = append(*bb, e.level.String()...)
+}
+
+func makeStringEmitter(value string) func(*event, *[]byte) {
+	return func(_ *event, bb *[]byte) {
+		*bb = append(*bb, value...)
+	}
+}
+
+func makeLocalTimestampEmitter(format string) func(e *event, bb *[]byte) {
+	return func(e *event, bb *[]byte) {
+		*bb = append(*bb, e.when.Format(format)...)
+	}
+}
+
+func makeUTCTimestampEmitter(format string) func(e *event, bb *[]byte) {
+	return func(e *event, bb *[]byte) {
+		*bb = append(*bb, e.when.UTC().Format(format)...)
+	}
 }
 
 func messageEmitter(e *event, bb *[]byte) {
