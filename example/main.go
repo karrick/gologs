@@ -25,7 +25,11 @@ func main() {
 	golf.Parse()
 
 	// Create a filtered logger by compiling the log format string.
-	log := gologs.NewFilter(gologs.New(os.Stderr, fmt.Sprintf("{localtime=2006-01-02T15:04:05} [%s] {message}", ProgramName)))
+	base, err := gologs.New(os.Stderr, fmt.Sprintf("{localtime=2006-01-02T15:04:05} [%s] {message}", ProgramName))
+	if err != nil {
+		panic(err)
+	}
+	log := gologs.NewFilter(base)
 
 	// Initialize the logger mode based on the provided command line flags.
 	if *optDebug {
@@ -38,7 +42,6 @@ func main() {
 		log.SetUser()
 	}
 
-	//
 	log.Admin("Starting up service: %v %v %v", 3.14, "hello", struct{}{}) // Admin events not logged when filter set to User level
 
 	rand.Seed(time.Now().Unix())

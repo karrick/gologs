@@ -3,12 +3,31 @@ package gologs
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"testing"
 )
 
+// MustCompile returns a new Base Logger, or will panic if the template is not
+// valid.
+//
+// ??? This function is not yet part of the library, but is a likely candidate
+// for future inclusion.
+func MustCompile(w io.Writer, template string) *Base {
+	base, err := New(w, template)
+	if err != nil {
+		panic(err)
+	}
+	return base
+}
+
 func Example() {
 	bb := new(bytes.Buffer)
-	base := New(bb, "[BASE] {message}")
+	base, err := New(bb, "[BASE] {message}")
+	if err != nil {
+		os.Exit(1)
+	}
+
 	base.Dev("%v %v %v", 3.14, "hello", struct{}{})
 	fmt.Printf("%s", bb.Bytes())
 	// Output:
@@ -19,7 +38,11 @@ func TestBase(t *testing.T) {
 	// TODO: test for compiles line
 	bb := new(bytes.Buffer)
 
-	logs := New(bb, "[BASE] {message}")
+	logs, err := New(bb, "[BASE] {message}")
+	if err != nil {
+		os.Exit(1)
+	}
+
 	logs.Dev("%v %v %v", 3.14, "hello", struct{}{})
 
 	if got, want := string(bb.Bytes()), "[BASE] 3.14 hello {}\n"; got != want {
@@ -30,7 +53,10 @@ func TestBase(t *testing.T) {
 func TestBaseAppendsNewline(t *testing.T) {
 	bb := new(bytes.Buffer)
 
-	logs := New(bb, "[BASE] {message}")
+	logs, err := New(bb, "[BASE] {message}")
+	if err != nil {
+		os.Exit(1)
+	}
 	logs.Dev("%v %v %v", 3.14, "hello", struct{}{})
 
 	if got, want := string(bb.Bytes()), "[BASE] 3.14 hello {}\n"; got != want {
@@ -41,7 +67,10 @@ func TestBaseAppendsNewline(t *testing.T) {
 func TestFilter(t *testing.T) {
 	check := func(t *testing.T, callback func(*Filter), want string) {
 		bb := new(bytes.Buffer)
-		a := New(bb, "[BASE] {message}")
+		a, err := New(bb, "[BASE] {message}")
+		if err != nil {
+			t.Fatal(err)
+		}
 		b := NewFilter(a)
 		callback(b)
 		if got := string(bb.Bytes()); got != want {
@@ -87,7 +116,12 @@ func TestTracer(t *testing.T) {
 	t.Run("prefixes emitted in proper order", func(t *testing.T) {
 		bb := new(bytes.Buffer)
 
-		logs := NewTracer(NewTracer(New(bb, "[BASE] {message}"), "[TRACER1] "), "[TRACER2] ")
+		base, err := New(bb, "[BASE] {message}")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		logs := NewTracer(NewTracer(base, "[TRACER1] "), "[TRACER2] ")
 
 		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[BASE] [TRACER1] [TRACER2] 3.14 hello {}\n"; got != want {
@@ -98,7 +132,12 @@ func TestTracer(t *testing.T) {
 	t.Run("tracers emitted regardless of intermediate filters", func(t *testing.T) {
 		bb := new(bytes.Buffer)
 
-		logs := NewTracer(NewFilter(New(bb, "[BASE] {message}")).SetUser(), "[TRACER] ")
+		base, err := New(bb, "[BASE] {message}")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		logs := NewTracer(NewFilter(base).SetUser(), "[TRACER] ")
 
 		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {
