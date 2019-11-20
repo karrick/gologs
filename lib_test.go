@@ -34,20 +34,20 @@ func Example() {
 	// [BASE] 3.14 hello {}
 }
 
-func TestBase(t *testing.T) {
-	// TODO: test for compiles line
-	bb := new(bytes.Buffer)
+// func TestBase(t *testing.T) {
+// 	// TODO: test for compiles line
+// 	bb := new(bytes.Buffer)
 
-	log, err := NewBase(bb, "[BASE] {message}")
-	if err != nil {
-		t.Fatal(err)
-	}
-	log.User("%v %v %v", 3.14, "hello", struct{}{})
+// 	log, err := newBase(bb, "[BASE] {message}")
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	log.User("%v %v %v", 3.14, "hello", struct{}{})
 
-	if got, want := string(bb.Bytes()), "[BASE] 3.14 hello {}\n"; got != want {
-		t.Errorf("GOT: %q; WANT: %q", got, want)
-	}
-}
+// 	if got, want := string(bb.Bytes()), "[BASE] 3.14 hello {}\n"; got != want {
+// 		t.Errorf("GOT: %q; WANT: %q", got, want)
+// 	}
+// }
 
 func TestFilter(t *testing.T) {
 	check := func(t *testing.T, callback func(*Filter), want string) {
@@ -100,6 +100,24 @@ func TestFilter(t *testing.T) {
 	})
 }
 
+func TestPrefix(t *testing.T) {
+	check := func(t *testing.T, callback func(Logger), want string) {
+		t.Helper()
+		bb := new(bytes.Buffer)
+		log, err := New(bb, "[A] {message}")
+		if err != nil {
+			t.Fatal(err)
+		}
+		callback(log)
+		if got := string(bb.Bytes()); got != want {
+			t.Errorf("GOT: %q; WANT: %q", got, want)
+		}
+	}
+
+	check(t, func(l Logger) { NewPrefixer(l, "[B] ").User("%v", 3.14) }, "[A] [B] 3.14\n")
+	check(t, func(l Logger) { NewPrefixer(NewPrefixer(l, "[B] "), "[C] ").User("%v", 3.14) }, "[A] [B] [C] 3.14\n")
+}
+
 func TestTracer(t *testing.T) {
 	t.Run("prefixes emitted in proper order", func(t *testing.T) {
 		bb := new(bytes.Buffer)
@@ -125,7 +143,7 @@ func TestTracer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		log := NewTracer(NewFilter(base).SetUser(), "[TRACER] ")
+		log := NewTracer(base.SetUser(), "[TRACER] ")
 
 		log.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {
