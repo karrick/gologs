@@ -1,6 +1,7 @@
 package gologs
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -73,6 +74,16 @@ type Logger interface {
 	log(*event)
 }
 
+// New returns a new Filter Logger that emits logged events to w after
+// formatting the event according to template.
+func New(w io.Writer, template string) (*Filter, error) {
+	base, err := NewBase(w, template)
+	if err != nil {
+		return nil, err
+	}
+	return NewFilter(base), nil
+}
+
 // Base formats the event to a byte slice, ensuring it ends with a newline, and
 // writes its output to its underlying io.Writer.
 type Base struct {
@@ -82,9 +93,12 @@ type Base struct {
 	m          sync.Mutex
 }
 
-// New returns a new Base Logger that emits logged events to w after formatting
+// NewBase returns a new Base Logger that emits logged events to w after formatting
 // the event according to template.
-func New(w io.Writer, template string) (*Base, error) {
+func NewBase(w io.Writer, template string) (*Base, error) {
+	if strings.HasSuffix(template, "\n") {
+		return nil, errors.New("cannot create logger with final newline")
+	}
 	formatters, err := compileFormat(template)
 	if err != nil {
 		return nil, err

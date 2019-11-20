@@ -13,7 +13,7 @@ import (
 //
 // ??? This function is not yet part of the library, but is a likely candidate
 // for future inclusion.
-func MustCompile(w io.Writer, template string) *Base {
+func MustCompile(w io.Writer, template string) Logger {
 	base, err := New(w, template)
 	if err != nil {
 		panic(err)
@@ -23,12 +23,12 @@ func MustCompile(w io.Writer, template string) *Base {
 
 func Example() {
 	bb := new(bytes.Buffer)
-	base, err := New(bb, "[BASE] {message}")
+	log, err := New(bb, "[BASE] {message}")
 	if err != nil {
 		os.Exit(1)
 	}
 
-	base.Dev("%v %v %v", 3.14, "hello", struct{}{})
+	log.User("%v %v %v", 3.14, "hello", struct{}{})
 	fmt.Printf("%s", bb.Bytes())
 	// Output:
 	// [BASE] 3.14 hello {}
@@ -38,26 +38,11 @@ func TestBase(t *testing.T) {
 	// TODO: test for compiles line
 	bb := new(bytes.Buffer)
 
-	logs, err := New(bb, "[BASE] {message}")
+	log, err := NewBase(bb, "[BASE] {message}")
 	if err != nil {
-		os.Exit(1)
+		t.Fatal(err)
 	}
-
-	logs.Dev("%v %v %v", 3.14, "hello", struct{}{})
-
-	if got, want := string(bb.Bytes()), "[BASE] 3.14 hello {}\n"; got != want {
-		t.Errorf("GOT: %q; WANT: %q", got, want)
-	}
-}
-
-func TestBaseAppendsNewline(t *testing.T) {
-	bb := new(bytes.Buffer)
-
-	logs, err := New(bb, "[BASE] {message}")
-	if err != nil {
-		os.Exit(1)
-	}
-	logs.Dev("%v %v %v", 3.14, "hello", struct{}{})
+	log.User("%v %v %v", 3.14, "hello", struct{}{})
 
 	if got, want := string(bb.Bytes()), "[BASE] 3.14 hello {}\n"; got != want {
 		t.Errorf("GOT: %q; WANT: %q", got, want)
@@ -66,19 +51,22 @@ func TestBaseAppendsNewline(t *testing.T) {
 
 func TestFilter(t *testing.T) {
 	check := func(t *testing.T, callback func(*Filter), want string) {
+		t.Helper()
 		bb := new(bytes.Buffer)
 		a, err := New(bb, "[BASE] {message}")
 		if err != nil {
 			t.Fatal(err)
 		}
-		b := NewFilter(a)
-		callback(b)
+		callback(a)
 		if got := string(bb.Bytes()); got != want {
 			t.Errorf("GOT: %q; WANT: %q", got, want)
 		}
 	}
 
 	t.Run("should-ignore", func(t *testing.T) {
+		t.Run("default-logger-dev-event", func(t *testing.T) {
+			check(t, func(f *Filter) { f.Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
+		})
 		t.Run("admin-logger-dev-event", func(t *testing.T) {
 			check(t, func(f *Filter) { f.SetAdmin().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
 		})
@@ -121,9 +109,9 @@ func TestTracer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		logs := NewTracer(NewTracer(base, "[TRACER1] "), "[TRACER2] ")
+		log := NewTracer(NewTracer(base, "[TRACER1] "), "[TRACER2] ")
 
-		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
+		log.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[BASE] [TRACER1] [TRACER2] 3.14 hello {}\n"; got != want {
 			t.Errorf("GOT: %q; WANT: %q", got, want)
 		}
@@ -137,9 +125,9 @@ func TestTracer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		logs := NewTracer(NewFilter(base).SetUser(), "[TRACER] ")
+		log := NewTracer(NewFilter(base).SetUser(), "[TRACER] ")
 
-		logs.Admin("%v %v %v", 3.14, "hello", struct{}{})
+		log.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {
 			t.Errorf("GOT: %q; WANT: %q", got, want)
 		}
