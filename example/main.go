@@ -10,31 +10,32 @@ import (
 	"github.com/karrick/gologs"
 )
 
-func main() {
-	optQuiet := golf.BoolP('q', "quiet", false, "Do not print intermediate errors to stderr")
-	optVerbose := golf.BoolP('v', "verbose", false, "Print verbose output to stderr")
-	optDebug := golf.BoolP('d', "debug", false, "Print debug output to stderr")
-	golf.Parse()
+var log *gologs.Filter
 
+func init() {
 	// Create a filtered logger by compiling the log format string.
-	base, err := gologs.New(os.Stderr, "{localtime=2006-01-02T15:04:05} {program} {message}")
+	var err error
+	log, err = gologs.New(os.Stderr, "{program} {message}")
 	if err != nil {
 		panic(err)
 	}
-	log := gologs.NewFilter(base)
+}
+
+func main() {
+	optDebug := golf.Bool("debug", false, "Print debug output to stderr")
+	optVerbose := golf.Bool("verbose", false, "Print verbose output to stderr")
+	golf.Parse()
 
 	// Initialize the logger mode based on the provided command line flags.
 	if *optDebug {
 		log.SetDev()
 	} else if *optVerbose {
 		log.SetAdmin()
-	} else if *optQuiet {
-		log.SetUser()
 	} else {
 		log.SetUser()
 	}
 
-	log.Admin("Starting up service: %v %v %v", 3.14, "hello", struct{}{}) // Admin events not logged when filter set to User level
+	log.Admin("Starting service: %v %v %v", 3.14, "hello", struct{}{}) // Admin events not logged when filter set to User level
 
 	rand.Seed(time.Now().Unix())
 
