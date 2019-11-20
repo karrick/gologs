@@ -1,6 +1,8 @@
 # gologs
 
-## Simplified log levels
+## High Level Features
+
+### Simplified Log Levels
 
 When writing software, much thought goes into choosing which level to
 emit logs at for various events. Is this a debug level event? Or
@@ -8,27 +10,46 @@ verbose? What about the difference between warning and error?
 
 This library attempts to reduce the complexity of choosing an event
 level for logged events, while also reducing the complexity of
-choosing a log level when running a program. There are typically three
+choosing a log level for a running program. There are typically three
 different reasons to view logs:
 
 1. I am a user and would like to know basic information about this
-   program's operations.
+   program's operations. Why did it die, for instance.
 
 2. I am an administrator running the program and want detailed runtime
-   information about this program's execution.
+   information about this program's execution. When did the program
+   start? When did the service experience connectivity issues, even
+   though it is designed to reconnect on failures?
 
 3. I am a developer trying to figure out how this program is working
-   or not working properly.
+   or not working properly. How did the program get down that path?
 
-Rather than selecting from the common five log levels, this program
+Rather than selecting from the five common log levels, this program
 provides only three log levels, corresponding exactly to the above
-list, then adds in the concept of Tracer logging.
+list, then adds in the concept of Tracer logging, described in the
+next section.
 
 1. User
 2. Admin
 3. Dev
 
-## A Tree of Logs?
+### Tracer Logging
+
+Orthogonal to log levels are a concept of Tracer events. This allows
+the simplified log levels described above to be used for all logs, but
+tracing can be turned on for a set of log events pertaining to a
+single request. For instance in the past, I have done this by
+suffixing `&debug=true` to the URI of a request. The undocumented API
+would cause all events for that request to get logged, regardless of
+the log level. If a user reported a problem with a valid looking
+request, I could repeat their request with `&debug=true` appended to
+it while watching the logs to follow the request run its way through
+the service. It was an effective solution I have used to debug many
+problems.
+
+## Description
+
+### A Tree of Logs?
 
 The only thing we've done differently so far is reduce the complexity
 of 5 log levels down to 3, which is nice, but nothing to justify use
@@ -39,7 +60,7 @@ particular module of the service should be logged. Other times every
 event associated with a particular request should be logged. This
 library is an attempt to satisfy those real world operational desires.
 
-### Base of the Tree
+#### Base of the Tree
 
 To do this, this library provides for the creation of what I like to
 call a tree of loggers. Maybe a bad term, but stick with me for a
@@ -68,7 +89,7 @@ each log event to format the event according to the template. This is
 in stark contrast to other logging libraries that evaluate the
 template string for each event to be logged.
 
-### Controlling Log Levels
+#### Controlling Log Levels
 
 Like most logging libraries, the basic logger provides methods to
 change its log level, controling which events get logged and which get
@@ -91,7 +112,7 @@ it an Admin event.
     log.Dev("this event does get logged")
 ```
 
-### Tree Branches
+#### Tree Branches
 
 Different logging configurations can be effected by creating a logging
 tree, and while the tree may be arbitrarily complex, a simple tree is
@@ -126,113 +147,52 @@ logging events to them.
     func example1() {
         // log defined as in previous examples...
         foo := &Foo{
-            log: gologs.NewBranch(log, "[FOO] "), // NOTE the trailing space
+            // NOTE: the branch prefix has a trailing space in order to
+            // format nicely. You may prefer "FOO: " as your prefix, or
+            // even just "FOO:".
+            log: gologs.NewBranch(log, "[FOO] "),
         }
         go foo.run()
 
         bar := &Bar{
-            log: gologs.NewBranch(log, "[BAR] "), // NOTE the trailing space
+            log: gologs.NewBranch(log, "[BAR] "),
         }
         go bar.run()
     }
 ```
 
-In the above example both `Foo` and `Bar` will log events through the
-underlying logger. Remember `log` here is set to a Filter Logger which
-controls which events are emitted and which are ignored. But each of
-the modules can also wrap their Logger with a Filter if the developer
-wants to be able to set `Foo` to one log level, and `Bar` to another.
+In the above example both `Foo` and `Bar` are provided their own
+individual logger to use, and both `Foo` and `Bar` can independently
+control its own log level. It is important that they use that logger
+to log all of their events during their lifetime, in order to be
+effective.
+
+It is possible to create a branch of a logger that does not have a
+prefix by providing the empty string as the prefix argument. In the
+below example, `log2` merely branches the logs so that the developer
+can independently control the log level of that particular branch of
+logs.
 
 ```Go
-    func example2() {
-        // log defined as before...
-        foo := &Foo{
-            log: gologs.NewFilter(gologs.NewPrefix(log, "[FOO] ")),
-        }
-        go foo.run()
-
-        bar := &Bar{
-            log: gologs.NewFilter(gologs.NewPrefix(log, "[BAR] ")),
-        }
-        go bar.run()
-    }
+    log2 := gologs.NewBranch(log, "")
 ```
 
-In the above example, both `Foo` and `Bar` can independently control
-its own log level. However, note that even if the Filter Logger from
-`Foo` or `Bar` allow a log event to pass through it, it might still
-get blocked by `log` which is the Logger used to create `Foo`'s and
-`Bar`'s Logger instances. When multiple Filter Loggers are in series,
-each of the Filters must be configured to allow desired events to pass
-through them.
+### Tracer logging
 
-For example, say the developer is working on some bug in `Bar`. They
-would like to see all developer and above events logged by `Bar`, but
-only log user level events in `Foo`. This is possible by setting each
-Filter Logger accordingly. Don't forget that `log` must be set to
-allow events to pass through it. Even if `Bar` is set to `Dev`, if
-`log`, which is also a filter in the log tree, is configured to log
-only administrator and user events, then the developer events from
-`Bar` will pass through the `Bar` filter, pass through `Bar`'s
-Prefixer, and get dropped at `log`. One solution is to set the global
-application `log` filter to the lowest setting by calling
-`log.SetDev()`, and then controlling the log filter level of each
-module for `Foo` and `Bar`:
-
-```Go
-    log.SetDev()
-    foo.log.SetUser()
-    bar.log.SetDev()
-```
-
-Another suggestion is to simply not create multiple filters in series
-for an application.
-
-```Go
-    var log gologs.Logger
-
-    func example3() {
-        var err error
-        log, err = gologs.New(os.Stderr, gologs.DefaultLogFormat)
-        if err != nil {
-            panic(err)
-        }
-
-        foo := &Foo{
-            log: gologs.NewFilter(gologs.NewPrefix(log, "[FOO] ")),
-        }
-        go foo.run()
-
-        bar := &Bar{
-            log: gologs.NewFilter(gologs.NewPrefix(log, "[BAR] ")),
-        }
-        go bar.run()
-    }
-```
-
-This makes it more easy to only have to control the log filter levels
-of each module. But does eliminate the flexibility that one might have
-of creating a master log level right above the base of the log tree.
-
-## Supports Tracer logging
-
-Orthogonal to log levels are a concept of Tracer events. This allows
-the simplified log levels described above to be used for all logs, but
-tracing can be turned on for a logger allowing all events created by
-or passing through that Tracer logger to have the event's tracer bit
-set.
-
-??? Rather than supporting parallel methods for creating tracer log
-events, there are no additional methods required to use Tracer
-logging. Instead of having logic throughout a handful of methods that
-say, `if isTraceable { log.Trace(...) } else { log.Admin(...) }`, to
-use Tracer logging, simply create a Tracer log, giving it a parent to
-send its logs to, and use that log for all log output.
+I'm sure I'm not the only person who wanted to figure out why a
+particular request or action was not working properly on a running
+service, decided to activate DEBUG log levels to watch the single
+request percolate through the service, to be reminded that the service
+is actually serving tens of thousands of requests per second, and now
+the additional slowdown that accompanies logging each and every single
+log event in the entire program not only slows it down, but makes it
+impossible to see the action or request in the maelstrom of log
+messages scrolling by the terminal.
 
 For instance, let's say an administrator or developer wants to send a
 request through their running system, logging all events related to
-that request, regardless of the log level. Tracer Loggers allow this
-flexibility.
+that request, regardless of the log level, but not necessarily see
+events for other requests.
 
 For this example, remember that each module has a Logger it uses
 whenever logging any event. Let's say the `Foo` module receives
@@ -275,10 +235,4 @@ other request. Tracer logic is not meant to be added and removed while
 debugging a program, but rather left in place, run in production, but
 not used, unless some special developer or administrator requested
 token marks a particular event as one for which all events should be
-logged. In the past, I have done this by suffixing `&debug=true` to
-the URI of a request. The undocumented API was simple enough, and when
-present, would cause all events for that request to get logged. If a
-user reported a problem with a request, I could repeat their request
-with `&debug=true` appended to it while watching the logs to follow
-the request run its way through the service. It was an effective
-solution I have used to debug many problems.
+logged. 

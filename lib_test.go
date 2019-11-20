@@ -109,14 +109,14 @@ func TestTracer(t *testing.T) {
 	t.Run("prefixes emitted in proper order", func(t *testing.T) {
 		bb := new(bytes.Buffer)
 
-		base, err := New(bb, "[BASE] {message}")
+		log, err := New(bb, "[BASE] {message}")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		log := NewTracer(NewTracer(base, "[TRACER1] "), "[TRACER2] ")
+		tracer := NewTracer(NewTracer(log, "[TRACER1] "), "[TRACER2] ")
 
-		log.Admin("%v %v %v", 3.14, "hello", struct{}{})
+		tracer.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[BASE] [TRACER1] [TRACER2] 3.14 hello {}\n"; got != want {
 			t.Errorf("GOT: %q; WANT: %q", got, want)
 		}
@@ -125,14 +125,14 @@ func TestTracer(t *testing.T) {
 	t.Run("tracers emitted regardless of intermediate branchs", func(t *testing.T) {
 		bb := new(bytes.Buffer)
 
-		base, err := New(bb, "[BASE] {message}")
+		log, err := New(bb, "[BASE] {message}")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		log := NewTracer(base.SetUser(), "[TRACER] ")
+		tracer := NewTracer(log.SetUser(), "[TRACER] ")
 
-		log.Admin("%v %v %v", 3.14, "hello", struct{}{})
+		tracer.Admin("%v %v %v", 3.14, "hello", struct{}{})
 		if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {
 			t.Errorf("GOT: %q; WANT: %q", got, want)
 		}
