@@ -28,19 +28,44 @@ logging.
 2. Admin
 3. Dev
 
-Different logging configurations can be effected by creating a
-composable logging tree. For instance at the base is the Logger that
-writes to some io.Writer. A custom log line template can be provided,
-or a default is readily available.
+## A Tree of Logs?
+
+This library provides a simple logger that behaves like most other
+logging libraries. In managing several real world services, I
+discovered the need for finer granularity in managing which events are
+logged. Sometimes all events in one particular sub module of the
+service should be logged. Other times every event associated with a
+particular request should be logged. This library is an attempt to
+satisfy those real world requirements.
+
+This library allows you to create what I like to call a tree of
+loggers. At the base of the tree, events are written to an underlying
+io.Writer. This allows a developer to create a logger and have it
+write to standard output, standard error, a file handle, a log rolling
+library which writes to a file, et cetera.
+
+That's like every other logging library out there, pretty much. But
+this library extends that to the concept of a tree with branches. A
+developer might choose to fork the base logger into three branches,
+one for each of the program's sub modules. This allows each branch to
+have an independent log level, and the program can set one module's
+logger to run at `Dev` mode, while the other branches run at `Admin`,
+or `User` mode. These log levels are also safe to asynchronously
+modify while other threads are actively logging events to them.
+
+## Example
+
+Different logging configurations can be effected by creating a logging
+tree. For instance at the base is the Logger that writes to some
+io.Writer. A custom log line template can be provided, or a default is
+readily available.
 
 ```Go
-    var base gologs.Logger
-    var err error
-    log, err = gologs.New(os.Stderr, gologs.DefaultLogFormat)
+    log, err := gologs.New(os.Stderr, gologs.DefaultLogFormat)
     if err != nil {
         panic(err)
     }
-    log.User("base logger created")
+    log.User("basic logger created")
 ```
 
 Everything written to the base logger is formatted according to the
@@ -49,30 +74,25 @@ underlying io.Writer. That io.Writer might be os.Stderr, or it might
 be a log rolling library, which in turn, is writting to a set of
 managed log files.
 
-The base level logger might even be wrapped by a Filter that controls
-which events get logged and which get ignored:
+Like most logging libraries, the base level logger provides methods to
+change its log level, controling which events get logged and which get
+ignored:
 
 ```Go
-    log = gologs.NewFilter(log).SetAdmin()
-    log.User("a filter logger controls which events are logged")
+    log.SetAdmin()
+    log.User("this event gets logged")
+    log.Admin("and so does this event")
+    log.Dev("but this event gets ignored")
+
+    log.SetLevel(gologs.Dev)
+    log.Dev("this event does get logged")
 ```
 
-In the above example all logged events pass through `filter`, a Filter
-Logger, and it determines which events will pass through to the base
-logger, get formatted, and written to the underlying io.Writer. Note
-that Filter Logger instances can have their log level safely changed
-asynchronously to events being logged to them.
-
-```Go
-    log.SetLevel(foo)
-```
-
-As mentioned before, these Loggers may be composed. Perhaps on top of
-the Filter Logger, two sub modules of a program are running, and the
-developer would like to prefix logged events from each submodule with
-the respective submodule name. Provided all the `Foo` methods log to
-`Foo`'s `log` field, the logged events will be given the specified
-prefix.
+Loggers may be composed. Perhaps on top of the Filter Logger, two sub
+modules of a program are running, and the developer would like to
+prefix logged events from each submodule with the respective submodule
+name. Provided all the `Foo` methods log to `Foo`'s `log` field, the
+logged events will be given the specified prefix.
 
 ```Go
     type Foo struct {
@@ -180,9 +200,16 @@ of creating a master log level right above the base of the log tree.
 
 Orthogonal to log levels are a concept of Tracer events. This allows
 the simplified log levels described above to be used for all logs, but
-Tracing can be turned on for a Logger allowing all events created by
+tracing can be turned on for a logger allowing all events created by
 or passing through that Tracer logger to have the event's tracer bit
 set.
+
+??? Rather than supporting parallel methods for creating tracer log
+events, there are no additional methods required to use Tracer
+logging. Instead of having logic throughout a handful of methods that
+say, `if isTraceable { log.Trace(...) } else { log.Admin(...) }`, to
+use Tracer logging, simply create a Tracer log, giving it a parent to
+send its logs to, and use that log for all log output.
 
 For instance, let's say an administrator or developer wants to send a
 request through their running system, logging all events related to
