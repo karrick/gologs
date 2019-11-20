@@ -21,8 +21,8 @@ different reasons to view logs:
    or not working properly.
 
 Rather than selecting from the common five log levels, this program
-provides only three log levels, and adds in the concept of Tracer
-logging.
+provides only three log levels, corresponding exactly to the above
+list, then adds in the concept of Tracer logging.
 
 1. User
 2. Admin
@@ -30,53 +30,56 @@ logging.
 
 ## A Tree of Logs?
 
-This library provides a simple logger that behaves like most other
-logging libraries. In managing several real world services, I
-discovered the need for finer granularity in managing which events are
-logged. Sometimes all events in one particular sub module of the
-service should be logged. Other times every event associated with a
-particular request should be logged. This library is an attempt to
-satisfy those real world requirements.
+The only thing we've done differently so far is reduce the complexity
+of 5 log levels down to 3, which is nice, but nothing to justify use
+of a different logging library. However, in managing several real
+world services, I discovered the need for finer granularity in
+managing which events are logged. Sometimes all events in one
+particular module of the service should be logged. Other times every
+event associated with a particular request should be logged. This
+library is an attempt to satisfy those real world operational desires.
 
-This library allows you to create what I like to call a tree of
-loggers. At the base of the tree, events are written to an underlying
+### Base of the Tree
+
+To do this, this library provides for the creation of what I like to
+call a tree of loggers. Maybe a bad term, but stick with me for a
+moment. At the base of the tree, events are written to an underlying
 io.Writer. This allows a developer to create a logger and have it
 write to standard output, standard error, a file handle, a log rolling
-library which writes to a file, et cetera.
-
-That's like every other logging library out there, pretty much. But
-this library extends that to the concept of a tree with branches. A
-developer might choose to fork the base logger into three branches,
-one for each of the program's sub modules. This allows each branch to
-have an independent log level, and the program can set one module's
-logger to run at `Dev` mode, while the other branches run at `Admin`,
-or `User` mode. These log levels are also safe to asynchronously
-modify while other threads are actively logging events to them.
-
-## Example
-
-Different logging configurations can be effected by creating a logging
-tree. For instance at the base is the Logger that writes to some
-io.Writer. A custom log line template can be provided, or a default is
-readily available.
+library which writes to a file, or any other io.Writer, thanks to Go
+interfaces.
 
 ```Go
-    log, err := gologs.New(os.Stderr, gologs.DefaultLogFormat)
+    log, err := gologs.New(os.Stderr, gologs.DefaultServiceFormat)
     if err != nil {
         panic(err)
     }
-    log.User("basic logger created")
+    log.User("program started") // "2006/01/02 15:04:05 [USER] program started"
 ```
 
 Everything written to the base logger is formatted according to the
 provided template string, given a trailing newline, and written to the
 underlying io.Writer. That io.Writer might be os.Stderr, or it might
 be a log rolling library, which in turn, is writting to a set of
-managed log files.
+managed log files. The library provides a few default log template
+strings, but in every case, when the logger is created, the template
+string is compiled to tree of function pointers that is evaluated over
+each log event to format the event according to the template. This is
+in stark contrast to other logging libraries that evaluate the
+template string for each event to be logged.
 
-Like most logging libraries, the base level logger provides methods to
+### Controlling Log Levels
+
+Like most logging libraries, the basic logger provides methods to
 change its log level, controling which events get logged and which get
-ignored:
+ignored. Rembember this library exposes three log levels. Rather than
+thinking in terms of what you are logging, with this library the
+developer is thinking about who is looking at the logs. The person
+running the program specifies what they would like to see. When
+deciding what level to emit an event as, ask yourself if an
+administrator would ever care about that event. If not, make it a Dev
+event. Or ask if a user would ever care about that event. If not, make
+it an Admin event.
 
 ```Go
     log.SetAdmin()
@@ -88,32 +91,47 @@ ignored:
     log.Dev("this event does get logged")
 ```
 
-Loggers may be composed. Perhaps on top of the Filter Logger, two sub
-modules of a program are running, and the developer would like to
-prefix logged events from each submodule with the respective submodule
-name. Provided all the `Foo` methods log to `Foo`'s `log` field, the
-logged events will be given the specified prefix.
+### Tree Branches
+
+Different logging configurations can be effected by creating a logging
+tree, and while the tree may be arbitrarily complex, a simple tree is
+likely more developer friendly than a complex one. For instance, I
+have adopted the pattern of creating a very small tree, with a base
+logger for the entire application, and a logger branch for each major
+module of the program. Each of those branches can have a different log
+level, each of which can be controlled at runtime using various means,
+always by invoking one of its log level control methods. Additionally
+each branch can have a particular string prefix provided that will
+prefix the logged events.
+
+This allows each branch to have an independently controlled log level,
+and the program can set one logger to run at `Dev` mode, while the
+other branches run at `Admin`, or `User` mode. These log levels are
+also safe to asynchronously modify while other threads are actively
+logging events to them.
 
 ```Go
+    // Foo is a module of the program with its own logger.
     type Foo struct {
         log gologs.Logger
         // ...
     }
 
+    // Bar is a module of the program with its own logger.
     type Bar struct {
         log gologs.Logger
         // ...
     }
 
     func example1() {
-        // log defined as before...
+        // log defined as in previous examples...
         foo := &Foo{
-            log: gologs.NewPrefix(log, "[FOO] "), // NOTE the trailing space
+            log: gologs.NewBranch(log, "[FOO] "), // NOTE the trailing space
         }
         go foo.run()
 
         bar := &Bar{
-            log: gologs.NewPrefix(log, "[BAR] "), // NOTE the trailing space
+            log: gologs.NewBranch(log, "[BAR] "), // NOTE the trailing space
         }
         go bar.run()
     }

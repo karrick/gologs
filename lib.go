@@ -17,7 +17,7 @@ import (
 // DefaultCommandFormat specifies a log format might be more appropriate for a
 // infrequently used command line program, where the name of the service is a
 // recommended part of the log line, but the timestamp is not.
-const DefaultCommandFormat = "{program} {message}"
+const DefaultCommandFormat = "{program}: {message}"
 
 // DefaultServiceFormat specifies a log format might be more appropriate for a
 // service daemon, where the name of the service is implied by the filename the
@@ -59,13 +59,14 @@ func (l Level) String() string {
 	case Dev:
 		return "DEV"
 	}
+	// NOT REACHED
 	panic(fmt.Sprintf("invalid log level: %v", uint32(l)))
 }
 
-// Event instances are created by Loggers and flow through the log tree down to
+// event instances are created by Loggers and flow through the log tree down to
 // the base, at which point, its arguments will be formatted immediately prior
 // to writing the log message to the underlying log io.Writer.
-type Event struct {
+type event struct {
 	args   []interface{}
 	prefix []string
 	when   time.Time
@@ -76,13 +77,13 @@ type Event struct {
 // base formats the event to a byte slice, ensuring it ends with a newline, and
 // writes its output to its underlying io.Writer.
 type base struct {
-	formatters []func(*Event, *[]byte)
+	formatters []func(*event, *[]byte)
 	w          io.Writer
 	c          int // c is count of bytes to allocate for formatting log line
 	m          sync.Mutex
 }
 
-func (b *base) Log(e *Event) error {
+func (b *base) log(e *event) error {
 	// ??? *If* want to sacrifice a bit of speed, might consider using a
 	// pre-allocated byte slice to format the output. The pre-allocated slice
 	// can be protected with the lock already being used to serialize output, or
@@ -116,7 +117,7 @@ func (b *base) Log(e *Event) error {
 // structures can be composed and connected, much like io.Reader instances, to
 // create required desired log handling.
 type Logger interface {
-	Log(*Event) error
+	log(*event) error
 }
 
 // New returns a new Logger that emits logged events to w after formatting the
@@ -124,7 +125,7 @@ type Logger interface {
 // application's base logger itself can have its log level controlled without
 // composition by another Filter on top of it, because having multiple log
 // levels is pretty much standard practice.
-func New(w io.Writer, template string) (*Filter, error) {
+func New(w io.Writer, template string) (*Branch, error) {
 	if strings.HasSuffix(template, "\n") {
 		return nil, errors.New("cannot create logger with final newline")
 	}
@@ -135,141 +136,112 @@ func New(w io.Writer, template string) (*Filter, error) {
 	// Create a dummy event to see how long the log line is with the provided
 	// template.
 	buf := make([]byte, 0, 64)
-	var e Event
+	var e event
 	for _, formatter := range formatters {
 		formatter(&e, &buf)
 	}
-	return NewFilter(&base{w: w, formatters: formatters, c: len(buf) + 64}), nil
+	min := len(buf) + 64
+	if min < 128 {
+		min = 128
+	}
+	return NewBranch(&base{w: w, formatters: formatters, c: min}, ""), nil
 }
 
-// Filter Logger will only convey events at the same level as the Filter is set
-// for or higher.
-type Filter struct {
+type Branch struct {
+	prefix string // optional
 	parent Logger
 	level  uint32
 }
 
-// NewFilter returns a new Filter Logger that passes logged events to the
-// underlying Logger depending on the Filter's configurable level and the level
-// of the event.
-func NewFilter(logger Logger) *Filter {
-	return &Filter{parent: logger, level: uint32(User)}
+func NewBranch(parent Logger, optionalPrefix string) *Branch {
+	return &Branch{parent: parent, prefix: optionalPrefix}
 }
 
-// SetLevel allows changing the log level of the Filter Logger. Events must have
-// the same log level or higher for the Filter Logger for events to be logged.
-func (f *Filter) SetLevel(level Level) *Filter {
-	atomic.StoreUint32(&f.level, uint32(level))
-	return f
+// SetLevel allows changing the log level. Events must have the same log level
+// or higher for events to be logged.
+func (b *Branch) SetLevel(level Level) *Branch {
+	atomic.StoreUint32(&b.level, uint32(level))
+	return b
 }
 
-// SetDev changes the log level of the Filter Logger to Dev, which allows all
-// events to be logged.
-func (f *Filter) SetDev() *Filter {
-	atomic.StoreUint32(&f.level, uint32(Dev))
-	return f
+// SetDev changes the log level to Dev, which allows all events to be logged.
+func (b *Branch) SetDev() *Branch {
+	atomic.StoreUint32(&b.level, uint32(Dev))
+	return b
 }
 
-// SetAdmin changes the log level of the Filter Logger to Admin, which allows
-// all Admin and User events to be logged.
-func (f *Filter) SetAdmin() *Filter {
-	atomic.StoreUint32(&f.level, uint32(Admin))
-	return f
+// SetAdmin changes the log level to Admin, which allows all Admin and User
+// events to be logged, and Dev events to be ignored.
+func (b *Branch) SetAdmin() *Branch {
+	atomic.StoreUint32(&b.level, uint32(Admin))
+	return b
 }
 
-// SetUser changes the log level of the Filter Logger to User, which allows all
-// User events to be logged.
-func (f *Filter) SetUser() *Filter {
-	atomic.StoreUint32(&f.level, uint32(User))
-	return f
+// SetUser changes the log level to User, which allows all User events to be
+// logged, and ignores Dev and Admin level events.
+func (b *Branch) SetUser() *Branch {
+	atomic.StoreUint32(&b.level, uint32(User))
+	return b
+}
+
+func (b *Branch) log(e *event) error {
+	if Level(atomic.LoadUint32(&b.level)) > e.level {
+		return nil
+	}
+	if b.prefix != "" {
+		e.prefix = append([]string{b.prefix}, e.prefix...)
+	}
+	return b.parent.log(e)
 }
 
 // Dev is used to inject an event considered interesting for developers into the
-// log stream. Note the Filter Logger must have been set to the Dev log level
-// for this event to be logged.
-func (f *Filter) Dev(format string, args ...interface{}) error {
-	if Level(atomic.LoadUint32(&f.level)) > Dev {
+// log stream. Note the logger must have been set to the Dev log level for this
+// event to be logged.
+func (b *Branch) Dev(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32(&b.level)) > Dev {
 		return nil
 	}
-	return f.parent.Log(&Event{format: format, args: args, level: Dev})
+	var prefix []string
+	if b.prefix != "" {
+		prefix = []string{b.prefix}
+	}
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Dev})
 }
 
 // Admin is used to inject an event considered interesting for administrators
-// into the log stream. Note the Filter Logger must have been set to the Dev or
-// Admin level for this event to be logged.
-func (f *Filter) Admin(format string, args ...interface{}) error {
-	if Level(atomic.LoadUint32(&f.level)) > Admin {
+// into the log stream. Note the logger must have been set to the Dev or Admin
+// level for this event to be logged.
+func (b *Branch) Admin(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32(&b.level)) > Admin {
 		return nil
 	}
-	return f.parent.Log(&Event{format: format, args: args, level: Admin})
+	var prefix []string
+	if b.prefix != "" {
+		prefix = []string{b.prefix}
+	}
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Admin})
 }
 
 // User is used to inject an event considered interesting for users into the log
 // stream. The created event will be logged regardless of the log level of the
-// Filter Logger, as User events are considered the highest priority events.
-func (f *Filter) User(format string, args ...interface{}) error {
-	return f.parent.Log(&Event{format: format, args: args, level: User})
-}
-
-// Log is used by Loggers that compose on top of this Filter Logger, and only
-// allow appropriate events to pass through the filter, and drop events that
-// have a level set lower than the Filter Logger has been configured for.
-func (f *Filter) Log(e *Event) error {
-	if Level(atomic.LoadUint32(&f.level)) > e.level {
-		return nil
+// logger, as User events are considered the highest priority events.
+func (b *Branch) User(format string, args ...interface{}) error {
+	var prefix []string
+	if b.prefix != "" {
+		prefix = []string{b.prefix}
 	}
-	return f.parent.Log(e)
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: User})
 }
 
-// Prefixer is a Logger that prefixes each logged event with a particular
-// string.
-type Prefixer struct {
-	parent Logger
-	prefix string
-}
-
-// NewPrefixer returns a Prefixer Logger.
-//
-//     pl := NewPrefixer(logger, "[REFRESH] ")  // make a prefix logger
-//     pl.Dev("start handling: %f", 3.14)       // [REFRESH] start handling: 3.14
-func NewPrefixer(logger Logger, prefix string) *Prefixer {
-	return &Prefixer{parent: logger, prefix: prefix}
-}
-
-// Dev is used to inject an event considered interesting for developers into the
-// log stream.
-func (p *Prefixer) Dev(format string, args ...interface{}) error {
-	return p.parent.Log(&Event{prefix: []string{p.prefix}, format: format, args: args, level: Dev})
-}
-
-// Admin is used to inject an event considered interesting for administrators
-// into the log stream.
-func (p *Prefixer) Admin(format string, args ...interface{}) error {
-	return p.parent.Log(&Event{prefix: []string{p.prefix}, format: format, args: args, level: Admin})
-}
-
-// User is used to inject an event considered interesting for users into the log
-// stream.
-func (p *Prefixer) User(format string, args ...interface{}) error {
-	return p.parent.Log(&Event{prefix: []string{p.prefix}, format: format, args: args, level: User})
-}
-
-// Log is used by Loggers that compose on top of this Prefixer Logger, and
-// prefix events provided to it with the Prefixer's prefix.
-func (p *Prefixer) Log(e *Event) error {
-	e.prefix = append([]string{p.prefix}, e.prefix...)
-	return p.parent.Log(e)
-}
-
-// Tracer Loggers log events with a tracer bit, that allows events to bypass
-// filters. Additionally any events that pass through a Tracer Logger will have
-// their tracer bit set, causing them to bypass filters on their way to the log.
+// Tracer instances log events with a tracer bit, that allows events to bypass
+// filters. Additionally any events that pass through a Tracer will have their
+// tracer bit set, causing them to bypass filters on their way to the log.
 type Tracer struct {
-	parent Logger
 	prefix string
+	parent Logger
 }
 
-// NewTracer returns a Tracer Logger.
+// NewTracer returns a Tracer logger.
 //
 //     tl := NewTracer(logger, "[QUERY-1234] ") // make a trace logger
 //     tl.Dev("start handling: %f", 3.14)       // [QUERY-1234] start handling: 3.14
@@ -280,35 +252,35 @@ func NewTracer(logger Logger, prefix string) *Tracer {
 // Dev is used to inject an event considered interesting for developers into the
 // log stream. Events logged to a Tracer Logger will pass through any configured
 // Filter Loggers below it.
-func (l *Tracer) Dev(format string, args ...interface{}) error {
-	return l.parent.Log(&Event{prefix: []string{l.prefix}, format: format, args: args, level: Dev | 4})
+func (t *Tracer) Dev(format string, args ...interface{}) error {
+	return t.parent.log(&event{prefix: []string{t.prefix}, format: format, args: args, level: Dev | 4})
 }
 
 // Admin is used to inject an event considered interesting for administrators
 // into the log stream. Events logged to a Tracer Logger will pass through any
 // configured Filter Loggers below it.
-func (l *Tracer) Admin(format string, args ...interface{}) error {
-	return l.parent.Log(&Event{prefix: []string{l.prefix}, format: format, args: args, level: Admin | 4})
+func (t *Tracer) Admin(format string, args ...interface{}) error {
+	return t.parent.log(&event{prefix: []string{t.prefix}, format: format, args: args, level: Admin | 4})
 }
 
 // User is used to inject an event considered interesting for users into the log
 // stream. Events logged to a Tracer Logger will pass through any configured
 // Filter Loggers below it.
-func (l *Tracer) User(format string, args ...interface{}) error {
-	return l.parent.Log(&Event{prefix: []string{l.prefix}, format: format, args: args, level: User | 4})
+func (t *Tracer) User(format string, args ...interface{}) error {
+	return t.parent.log(&event{prefix: []string{t.prefix}, format: format, args: args, level: User | 4})
 }
 
-// Log is used by Loggers that compose on top of this Tracer Logger, and prefix
-// events provided to it with the Tracer's prefix, and set the tracer bit so
-// that events will pass through Filter Loggers below it.
+// log is used by Loggers that compose on top of this Tracer, and prefix events
+// provided to it with the Tracer's prefix, and set the tracer bit so that
+// events will pass through Filter Loggers below it.
 //
 // ??? not sure whether this should be provided. Do we really want Tracer to be
 // used to build loggers on top of? Tracers are supposed to be light-weight and
 // ephemeral.
-func (l *Tracer) Log(e *Event) error {
+func (t *Tracer) log(e *event) error {
 	e.level |= 4
-	e.prefix = append([]string{l.prefix}, e.prefix...)
-	return l.parent.Log(e)
+	e.prefix = append([]string{t.prefix}, e.prefix...)
+	return t.parent.log(e)
 }
 
 // compileFormat converts the format string into a slice of functions to invoke
@@ -317,10 +289,10 @@ func (l *Tracer) Log(e *Event) error {
 // emit, and consuming runes to create a token that is intended to match one of
 // the pre-defined format specifier tokens, or an undefined format specifier
 // token that begins with "http-".
-func compileFormat(format string) ([]func(*Event, *[]byte), error) {
+func compileFormat(format string) ([]func(*event, *[]byte), error) {
 	// build slice of emitter functions, each will emit the requested
 	// information
-	var emitters []func(*Event, *[]byte)
+	var emitters []func(*event, *[]byte)
 
 	// state machine alternating between two states: either capturing runes for
 	// the next constant buffer, or capturing runes for the next token
@@ -420,17 +392,17 @@ func appendRune(buf *[]byte, r rune) {
 	*buf = (*buf)[:olen+n]                       // trim buf to actual size used by rune addition
 }
 
-func epochEmitter(e *Event, bb *[]byte) {
+func epochEmitter(e *event, bb *[]byte) {
 	*bb = append(*bb, strconv.FormatInt(e.when.UTC().Unix(), 10)...)
 }
 
-func levelEmitter(e *Event, bb *[]byte) {
+func levelEmitter(e *event, bb *[]byte) {
 	*bb = append(*bb, e.level.String()...)
 }
 
 var program string
 
-func makeProgramEmitter() func(e *Event, bb *[]byte) {
+func makeProgramEmitter() func(e *event, bb *[]byte) {
 	if program == "" {
 		var err error
 		program, err = os.Executable()
@@ -439,30 +411,30 @@ func makeProgramEmitter() func(e *Event, bb *[]byte) {
 		}
 		program = filepath.Base(program)
 	}
-	return func(e *Event, bb *[]byte) {
+	return func(e *event, bb *[]byte) {
 		*bb = append(*bb, program...)
 	}
 }
 
-func makeStringEmitter(value string) func(*Event, *[]byte) {
-	return func(_ *Event, bb *[]byte) {
+func makeStringEmitter(value string) func(*event, *[]byte) {
+	return func(_ *event, bb *[]byte) {
 		*bb = append(*bb, value...)
 	}
 }
 
-func makeLocalTimestampEmitter(format string) func(e *Event, bb *[]byte) {
-	return func(e *Event, bb *[]byte) {
+func makeLocalTimestampEmitter(format string) func(e *event, bb *[]byte) {
+	return func(e *event, bb *[]byte) {
 		*bb = append(*bb, e.when.Format(format)...)
 	}
 }
 
-func makeUTCTimestampEmitter(format string) func(e *Event, bb *[]byte) {
-	return func(e *Event, bb *[]byte) {
+func makeUTCTimestampEmitter(format string) func(e *event, bb *[]byte) {
+	return func(e *event, bb *[]byte) {
 		*bb = append(*bb, e.when.UTC().Format(format)...)
 	}
 }
 
-func messageEmitter(e *Event, bb *[]byte) {
-	*bb = append(*bb, strings.Join(e.prefix, "")...)       // emit the event's prefix
+func messageEmitter(e *event, bb *[]byte) {
+	*bb = append(*bb, strings.Join(e.prefix, "")...)       // emit the event's prefix ???
 	*bb = append(*bb, fmt.Sprintf(e.format, e.args...)...) // followed by the event message
 }
