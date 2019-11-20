@@ -3,6 +3,8 @@ package gologs
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -372,6 +374,8 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 				emitters = append(emitters, levelEmitter)
 			case "message":
 				emitters = append(emitters, messageEmitter)
+			case "program":
+				emitters = append(emitters, makeProgramEmitter())
 			case "timestamp":
 				// Emulate timestamp format from stdlib log (log.LstdFlags).
 				emitters = append(emitters, makeUTCTimestampEmitter("2006/01/02 15:04:05"))
@@ -423,6 +427,22 @@ func epochEmitter(e *event, bb *[]byte) {
 
 func levelEmitter(e *event, bb *[]byte) {
 	*bb = append(*bb, e.level.String()...)
+}
+
+var program string
+
+func makeProgramEmitter() func(e *event, bb *[]byte) {
+	if program == "" {
+		var err error
+		program, err = os.Executable()
+		if err != nil {
+			program = os.Args[0]
+		}
+		program = filepath.Base(program)
+	}
+	return func(e *event, bb *[]byte) {
+		*bb = append(*bb, program...)
+	}
 }
 
 func makeStringEmitter(value string) func(*event, *[]byte) {

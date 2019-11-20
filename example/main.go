@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/karrick/golf"
@@ -12,20 +11,13 @@ import (
 )
 
 func main() {
-	var ProgramName string
-	var err error
-	if ProgramName, err = os.Executable(); err != nil {
-		ProgramName = os.Args[0]
-	}
-	ProgramName = filepath.Base(ProgramName)
-
 	optQuiet := golf.BoolP('q', "quiet", false, "Do not print intermediate errors to stderr")
 	optVerbose := golf.BoolP('v', "verbose", false, "Print verbose output to stderr")
 	optDebug := golf.BoolP('d', "debug", false, "Print debug output to stderr")
 	golf.Parse()
 
 	// Create a filtered logger by compiling the log format string.
-	base, err := gologs.New(os.Stderr, fmt.Sprintf("{localtime=2006-01-02T15:04:05} [%s] {message}", ProgramName))
+	base, err := gologs.New(os.Stderr, "{localtime=2006-01-02T15:04:05} {program} {message}")
 	if err != nil {
 		panic(err)
 	}
