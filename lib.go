@@ -121,6 +121,10 @@ func (b *base) log(e *event) error {
 // created to emit events to their parent Logger instance, which may themselves
 // either filter events based on a configured level, or prefix events with a
 // configured string.
+//
+// When a logger is in User mode, only User events are logged. When a logger is
+// in Admin mode, only Admin and User events are logged. When a logger is in Dev
+// move, all Dev, Admin, and User events are logged.
 type Logger struct {
 	prefix string // prefix is an option string, that when not empty, will prefix events
 	parent logger // parent is the logger this branch sends events to
@@ -131,16 +135,12 @@ type Logger struct {
 // New returns a new Logger instance that emits logged events to w after
 // formatting the event according to template.
 //
-// When a logger is in User mode, only User events are logged. When a logger is
-// in Admin mode, only Admin and User events are logged. When a logger is in Dev
-// move, all Dev, Admin, and User events are logged.
-//
-// Note the logger mode for a newly created Logger is User, which I feel is in
-// keeping with the UNIX philosophy to _Avoid unnecessary output_. Simple
-// command line programs will not need to set the log level to prevent spewing
-// too many log events. While service application developers are more likely to
-// spend a few minutes to build in the ability to configure the log level based
-// on their service needs.
+// Logger instances returned by this function are initialized to User level,
+// which I feel is in keeping with the UNIX philosophy to _Avoid unnecessary
+// output_. Simple command line programs will not need to set the log level to
+// prevent spewing too many log events. While service application developers are
+// more likely to spend a few minutes to build in the ability to configure the
+// log level based on their service needs.
 func New(w io.Writer, template string) (*Logger, error) {
 	formatters, err := compileFormat(template)
 	if err != nil {
