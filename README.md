@@ -1,5 +1,7 @@
 # gologs
 
+Overview: [![GoDoc](https://godoc.org/github.com/karrick/gologs?status.svg)](https://godoc.org/github.com/karrick/gologs)
+
 ## High Level Features
 
 ### Simplified Log Levels
