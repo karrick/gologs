@@ -130,6 +130,17 @@ type Logger struct {
 
 // New returns a new Logger instance that emits logged events to w after
 // formatting the event according to template.
+//
+// When a logger is in User mode, only User events are logged. When a logger is
+// in Admin mode, only Admin and User events are logged. When a logger is in Dev
+// move, all Dev, Admin, and User events are logged.
+//
+// Note the logger mode for a newly created Logger is User, which I feel is in
+// keeping with the UNIX philosophy to _Avoid unnecessary output_. Simple
+// command line programs will not need to set the log level to prevent spewing
+// too many log events. While service application developers are more likely to
+// spend a few minutes to build in the ability to configure the log level based
+// on their service needs.
 func New(w io.Writer, template string) (*Logger, error) {
 	formatters, err := compileFormat(template)
 	if err != nil {
