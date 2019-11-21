@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -31,7 +33,9 @@ func main() {
 	log.Dev("something important to developers...")
 
 	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
-	a.run(flag.Args())
+	if err := a.run(os.Stdin); err != nil {
+		log.User("%s", err)
+	}
 }
 
 type Alpha struct {
@@ -39,21 +43,26 @@ type Alpha struct {
 	// other fields...
 }
 
-func (a *Alpha) run(args []string) {
+func (a *Alpha) run(r io.Reader) error {
 	a.Log.Admin("Started module")
-	for _, arg := range args {
+
+	scan := bufio.NewScanner(r)
+
+	for scan.Scan() {
 		// Create a request instance with its own logger.
 		request := &Request{
 			Log:   a.Log, // Usually a request can be logged at same level as module.
-			Query: arg,
+			Query: scan.Text(),
 		}
-		if strings.HasPrefix(arg, "@") {
+		if strings.HasPrefix(request.Query, "@") {
 			// For demonstration purposes, let's arbitrarily cause some of the
 			// events to be logged with tracers.
-			request.Log = gologs.NewTracer(request.Log, fmt.Sprintf("[arg=%s] ", arg))
+			request.Log = gologs.NewTracer(request.Log, fmt.Sprintf("[REQUEST %s] ", request.Query))
 		}
 		request.Handle()
 	}
+
+	return scan.Err()
 }
 
 // Request is a demonstration structure that has its own logger, which it uses

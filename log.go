@@ -23,7 +23,7 @@ const DefaultCommandFormat = "{program}: {message}"
 // logs will eventually be written to. The default timestamp format is the same
 // as what the standard library logs times as, but different timestamp formats
 // are readily available, and the timestamp format is also customizable.
-const DefaultServiceFormat = "{timestamp} [{level}] {message}"
+const DefaultServiceFormat = "{timestamp} {message}"
 
 // Level type defines one of several possible log levels.
 type Level uint32
@@ -190,7 +190,7 @@ func NewBranchWithPrefix(parent *Logger, prefix string) *Logger {
 //     tl := NewTracer(logger, "[QUERY-1234] ") // make a trace logger
 //     tl.Dev("start handling: %f", 3.14)       // [QUERY-1234] start handling: 3.14
 func NewTracer(parent *Logger, prefix string) *Logger {
-	return &Logger{parent: parent, prefix: prefix, tracer: 4}
+	return &Logger{parent: parent, prefix: prefix, tracer: User + 1}
 }
 
 func (b *Logger) log(e *event) error {
