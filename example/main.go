@@ -1,32 +1,25 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"math/rand"
 	"os"
-	"time"
+	"strings"
 
-	"github.com/karrick/golf"
 	"github.com/karrick/gologs"
 )
 
-var log *gologs.Filter
+func main() {
+	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
+	optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
+	flag.Parse()
 
-func init() {
+	// Initialize the logger mode based on the provided command line flags.
 	// Create a filtered logger by compiling the log format string.
-	var err error
-	log, err = gologs.New(os.Stderr, "{program} {message}")
+	log, err := gologs.New(os.Stderr, "{program} {message}")
 	if err != nil {
 		panic(err)
 	}
-}
-
-func main() {
-	optDebug := golf.Bool("debug", false, "Print debug output to stderr")
-	optVerbose := golf.Bool("verbose", false, "Print verbose output to stderr")
-	golf.Parse()
-
-	// Initialize the logger mode based on the provided command line flags.
 	if *optDebug {
 		log.SetDev()
 	} else if *optVerbose {
@@ -34,20 +27,30 @@ func main() {
 	} else {
 		log.SetUser()
 	}
+	log.Admin("Starting program; debug: %v; verbose: %v", *optDebug, *optVerbose)
+	log.Dev("something important to developers...")
 
-	log.Admin("Starting service: %v %v %v", 3.14, "hello", struct{}{}) // Admin events not logged when filter set to User level
+	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
+	a.run(flag.Args())
+}
 
-	rand.Seed(time.Now().Unix())
+type Alpha struct {
+	Log *gologs.Logger
+	// other fields...
+}
 
-	// Handle some example requests from the command line arguments.
-	for _, arg := range golf.Args() {
+func (a *Alpha) run(args []string) {
+	a.Log.Admin("Started module")
+	for _, arg := range args {
 		// Create a request instance with its own logger.
 		request := &Request{
-			Log:   log,
+			Log:   a.Log, // Usually a request can be logged at same level as module.
 			Query: arg,
 		}
-		if rand.Intn(10) < 5 {
-			request.Log = gologs.NewTracer(log, fmt.Sprintf("arg=%s: ", arg))
+		if strings.HasPrefix(arg, "@") {
+			// For demonstration purposes, let's arbitrarily cause some of the
+			// events to be logged with tracers.
+			request.Log = gologs.NewTracer(request.Log, fmt.Sprintf("[arg=%s] ", arg))
 		}
 		request.Handle()
 	}
@@ -56,12 +59,12 @@ func main() {
 // Request is a demonstration structure that has its own logger, which it uses
 // to log all events relating to handling this request.
 type Request struct {
-	Log   gologs.Logger // Log is the logger for this particular request.
-	Query string        // Query is the request payload.
+	Log   *gologs.Logger // Log is the logger for this particular request.
+	Query string         // Query is the request payload.
 }
 
 func (r *Request) Handle() {
 	// Anywhere in the call flow for the request, if it wants to log something,
 	// it should log to the Request's logger.
-	r.Log.Dev("this event rips through filter to get logged")
+	r.Log.Dev("handling request: %v", r.Query)
 }

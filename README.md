@@ -78,7 +78,7 @@ interfaces.
     log.User("program started") // "2006/01/02 15:04:05 [USER] program started"
 ```
 
-Everything written to the base logger is formatted according to the
+Everything written to this logger is formatted according to the
 provided template string, given a trailing newline, and written to the
 underlying io.Writer. That io.Writer might be os.Stderr, or it might
 be a log rolling library, which in turn, is writting to a set of
@@ -86,7 +86,7 @@ managed log files. The library provides a few default log template
 strings, but in every case, when the logger is created, the template
 string is compiled to tree of function pointers that is evaluated over
 each log event to format the event according to the template. This is
-in stark contrast to other logging libraries that evaluate the
+in stark contrast to many other logging libraries that evaluate the
 template string for each event to be logged.
 
 #### Controlling Log Levels
@@ -112,7 +112,7 @@ it an Admin event.
     log.Dev("this event does get logged")
 ```
 
-#### Tree Branches
+#### Creating New Branches for the Log Tree
 
 Different logging configurations can be effected by creating a logging
 tree, and while the tree may be arbitrarily complex, a simple tree is
@@ -134,13 +134,13 @@ logging events to them.
 ```Go
     // Foo is a module of the program with its own logger.
     type Foo struct {
-        log gologs.Logger
+        log *gologs.Logger
         // ...
     }
 
     // Bar is a module of the program with its own logger.
     type Bar struct {
-        log gologs.Logger
+        log *gologs.Logger
         // ...
     }
 
@@ -150,12 +150,12 @@ logging events to them.
             // NOTE: the branch prefix has a trailing space in order to
             // format nicely. You may prefer "FOO: " as your prefix, or
             // even just "FOO:".
-            log: gologs.NewBranch(log, "[FOO] "),
+            log: gologs.NewBranchWithPrefix(log, "[FOO] "),
         }
         go foo.run()
 
         bar := &Bar{
-            log: gologs.NewBranch(log, "[BAR] "),
+            log: gologs.NewBranchWithPrefix(log, "[BAR] "),
         }
         go bar.run()
     }
@@ -168,13 +168,12 @@ to log all of their events during their lifetime, in order to be
 effective.
 
 It is possible to create a branch of a logger that does not have a
-prefix by providing the empty string as the prefix argument. In the
-below example, `log2` merely branches the logs so that the developer
-can independently control the log level of that particular branch of
-logs.
+prefix. In the below example, `log2` merely branches the logs so that
+the developer can independently control the log level of that
+particular branch of logs.
 
 ```Go
-    log2 := gologs.NewBranch(log, "")
+    log2 := gologs.NewBranch(log)
 ```
 
 ### Tracer logging
@@ -205,7 +204,7 @@ underlying io.Writer.
 
 ```Go
     type Request struct {
-        log   gologs.Logger
+        log   *gologs.Logger
         query string
         // ...
     }
@@ -222,7 +221,7 @@ underlying io.Writer.
     }
 
     func (r *Request) Process() error {
-        r.log.Dev("beginning processing of request")
+        r.log.Dev("beginning processing of request: %v", r)
         // ...
     }
 ```
@@ -235,4 +234,4 @@ other request. Tracer logic is not meant to be added and removed while
 debugging a program, but rather left in place, run in production, but
 not used, unless some special developer or administrator requested
 token marks a particular event as one for which all events should be
-logged. 
+logged.

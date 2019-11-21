@@ -13,7 +13,7 @@ import (
 //
 // ??? This function is not yet part of the library, but is a likely candidate
 // for future inclusion.
-func MustCompile(w io.Writer, template string) Logger {
+func MustCompile(w io.Writer, template string) *Logger {
 	base, err := New(w, template)
 	if err != nil {
 		panic(err)
@@ -34,9 +34,27 @@ func Example() {
 	// [BASE] 3.14 hello {}
 }
 
-func TestBranch(t *testing.T) {
-	t.Run("filtering", func(t *testing.T) {
-		check := func(t *testing.T, callback func(*Branch), want string) {
+func TestLogger(t *testing.T) {
+	t.Run("prefix", func(t *testing.T) {
+		check := func(t *testing.T, callback func(*Logger), want string) {
+			t.Helper()
+			bb := new(bytes.Buffer)
+			log, err := New(bb, "[A] {message}")
+			if err != nil {
+				t.Fatal(err)
+			}
+			callback(log)
+			if got := string(bb.Bytes()); got != want {
+				t.Errorf("GOT: %q; WANT: %q", got, want)
+			}
+		}
+
+		check(t, func(l *Logger) { NewBranchWithPrefix(l, "[B] ").User("%v", 3.14) }, "[A] [B] 3.14\n")
+		check(t, func(l *Logger) { NewBranchWithPrefix(NewBranchWithPrefix(l, "[B] "), "[C] ").User("%v", 3.14) }, "[A] [B] [C] 3.14\n")
+	})
+
+	t.Run("filter", func(t *testing.T) {
+		check := func(t *testing.T, callback func(*Logger), want string) {
 			t.Helper()
 			bb := new(bytes.Buffer)
 			log, err := New(bb, "[BASE] {message}")
@@ -51,90 +69,72 @@ func TestBranch(t *testing.T) {
 
 		t.Run("should-ignore", func(t *testing.T) {
 			t.Run("admin-logger-dev-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetAdmin().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
+				check(t, func(f *Logger) { f.SetAdmin().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
 			})
 			t.Run("user-logger-dev-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetUser().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
+				check(t, func(f *Logger) { f.SetUser().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
 			})
 			t.Run("user-logger-admin-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetUser().Admin("%v %v %v", 3.14, "hello", struct{}{}) }, "")
+				check(t, func(f *Logger) { f.SetUser().Admin("%v %v %v", 3.14, "hello", struct{}{}) }, "")
 			})
 		})
 
 		t.Run("should-convey", func(t *testing.T) {
 			t.Run("default-logger-dev-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
+				check(t, func(f *Logger) { f.Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})
 			t.Run("admin-logger-admin-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetAdmin().Admin("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
+				check(t, func(f *Logger) { f.SetAdmin().Admin("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})
 			t.Run("admin-logger-user-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetAdmin().User("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
+				check(t, func(f *Logger) { f.SetAdmin().User("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})
 			t.Run("user-logger-user-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetUser().User("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
+				check(t, func(f *Logger) { f.SetUser().User("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})
 			t.Run("dev-logger-admin-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetDev().Admin("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
+				check(t, func(f *Logger) { f.SetDev().Admin("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})
 			t.Run("dev-logger-dev-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetDev().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
+				check(t, func(f *Logger) { f.SetDev().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})
 			t.Run("dev-logger-user-event", func(t *testing.T) {
-				check(t, func(f *Branch) { f.SetDev().User("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
+				check(t, func(f *Logger) { f.SetDev().User("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})
 		})
 	})
 
-	t.Run("prefix", func(t *testing.T) {
-		check := func(t *testing.T, callback func(Logger), want string) {
-			t.Helper()
+	t.Run("tracer", func(t *testing.T) {
+		t.Run("prefixes emitted in proper order", func(t *testing.T) {
 			bb := new(bytes.Buffer)
-			log, err := New(bb, "[A] {message}")
+
+			log, err := New(bb, "[BASE] {message}")
 			if err != nil {
 				t.Fatal(err)
 			}
-			callback(log)
-			if got := string(bb.Bytes()); got != want {
+
+			tracer := NewTracer(NewTracer(log, "[TRACER1] "), "[TRACER2] ")
+
+			tracer.Admin("%v %v %v", 3.14, "hello", struct{}{})
+			if got, want := string(bb.Bytes()), "[BASE] [TRACER1] [TRACER2] 3.14 hello {}\n"; got != want {
 				t.Errorf("GOT: %q; WANT: %q", got, want)
 			}
-		}
+		})
 
-		check(t, func(l Logger) { NewBranch(l, "[B] ").User("%v", 3.14) }, "[A] [B] 3.14\n")
-		check(t, func(l Logger) { NewBranch(NewBranch(l, "[B] "), "[C] ").User("%v", 3.14) }, "[A] [B] [C] 3.14\n")
-	})
-}
+		t.Run("tracers emitted regardless of intermediate branchs", func(t *testing.T) {
+			bb := new(bytes.Buffer)
 
-func TestTracer(t *testing.T) {
-	t.Run("prefixes emitted in proper order", func(t *testing.T) {
-		bb := new(bytes.Buffer)
+			log, err := New(bb, "[BASE] {message}")
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		log, err := New(bb, "[BASE] {message}")
-		if err != nil {
-			t.Fatal(err)
-		}
+			tracer := NewTracer(log.SetUser(), "[TRACER] ")
 
-		tracer := NewTracer(NewTracer(log, "[TRACER1] "), "[TRACER2] ")
-
-		tracer.Admin("%v %v %v", 3.14, "hello", struct{}{})
-		if got, want := string(bb.Bytes()), "[BASE] [TRACER1] [TRACER2] 3.14 hello {}\n"; got != want {
-			t.Errorf("GOT: %q; WANT: %q", got, want)
-		}
-	})
-
-	t.Run("tracers emitted regardless of intermediate branchs", func(t *testing.T) {
-		bb := new(bytes.Buffer)
-
-		log, err := New(bb, "[BASE] {message}")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		tracer := NewTracer(log.SetUser(), "[TRACER] ")
-
-		tracer.Admin("%v %v %v", 3.14, "hello", struct{}{})
-		if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {
-			t.Errorf("GOT: %q; WANT: %q", got, want)
-		}
+			tracer.Admin("%v %v %v", 3.14, "hello", struct{}{})
+			if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {
+				t.Errorf("GOT: %q; WANT: %q", got, want)
+			}
+		})
 	})
 }

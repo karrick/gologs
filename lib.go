@@ -1,7 +1,6 @@
 package gologs
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -63,9 +62,10 @@ func (l Level) String() string {
 	panic(fmt.Sprintf("invalid log level: %v", uint32(l)))
 }
 
-// event instances are created by Loggers and flow through the log tree down to
-// the base, at which point, its arguments will be formatted immediately prior
-// to writing the log message to the underlying log io.Writer.
+// event instances are created by loggers and flow through the log tree from the
+// branch where they were created, down to the base, at which point, its
+// arguments will be formatted immediately prior to writing the log message to
+// the underlying log io.Writer.
 type event struct {
 	args   []interface{}
 	prefix []string
@@ -74,8 +74,13 @@ type event struct {
 	level  Level
 }
 
-// base formats the event to a byte slice, ensuring it ends with a newline, and
-// writes its output to its underlying io.Writer.
+type logger interface {
+	log(*event) error
+}
+
+// base is at the bottom of the logger tree, and formats the event to a byte
+// slice, ensuring it ends with a newline, and writes its output to its
+// underlying io.Writer.
 type base struct {
 	formatters []func(*event, *[]byte)
 	w          io.Writer
@@ -112,23 +117,20 @@ func (b *base) log(e *event) error {
 	return err
 }
 
-// Logger interface specifies something that can act as a logger. There are
-// several structures in this library that provide the Logger interface. Logger
-// structures can be composed and connected, much like io.Reader instances, to
-// create required desired log handling.
-type Logger interface {
-	log(*event) error
+// Logger provides methods to create events to be logged. Logger instances are
+// created to emit events to their parent Logger instance, which may themselves
+// either filter events based on a configured level, or prefix events with a
+// configured string.
+type Logger struct {
+	prefix string // prefix is an option string, that when not empty, will prefix events
+	parent logger // parent is the logger this branch sends events to
+	level  Level  // level is the independent log level controls for this branch
+	tracer Level  // tracer is an optional value that is boolean ORd with an event, so events created by this branch will pass through possible log level controls below.
 }
 
-// New returns a new Logger that emits logged events to w after formatting the
-// event according to template. This returns a Filter Logger, so that an
-// application's base logger itself can have its log level controlled without
-// composition by another Filter on top of it, because having multiple log
-// levels is pretty much standard practice.
-func New(w io.Writer, template string) (*Branch, error) {
-	if strings.HasSuffix(template, "\n") {
-		return nil, errors.New("cannot create logger with final newline")
-	}
+// New returns a new Logger instance that emits logged events to w after
+// formatting the event according to template.
+func New(w io.Writer, template string) (*Logger, error) {
 	formatters, err := compileFormat(template)
 	if err != nil {
 		return nil, err
@@ -144,48 +146,44 @@ func New(w io.Writer, template string) (*Branch, error) {
 	if min < 128 {
 		min = 128
 	}
-	return NewBranch(&base{w: w, formatters: formatters, c: min}, ""), nil
+	return &Logger{parent: &base{w: w, formatters: formatters, c: min}}, nil
 }
 
-type Branch struct {
-	prefix string // optional
-	parent Logger
-	level  uint32
+// NewBranch returns a new Logger instance that logs to parent, but has its own
+// log level that is independently controlled from parent.
+//
+// Note that events are filtered as the flow from their origin branch to the
+// base. When a parent Logger has a more restrictive log level than a child
+// Logger, the event might pass through from a child to its parent, but be
+// filtered out at the parent.
+func NewBranch(parent *Logger) *Logger {
+	return &Logger{parent: parent}
 }
 
-func NewBranch(parent Logger, optionalPrefix string) *Branch {
-	return &Branch{parent: parent, prefix: optionalPrefix}
+// NewBranchWithPrefix returns a new Logger instance that logs to parent, but
+// has its own log level that is independently controlled from
+// parent. Furthermore, events that pass through the returned Logger will have
+// prefix string prefixed to the event.
+//
+// Note that events are filtered as the flow from their origin branch to the
+// base. When a parent Logger has a more restrictive log level than a child
+// Logger, the event might pass through from a child to its parent, but be
+// filtered out at the parent.
+func NewBranchWithPrefix(parent *Logger, prefix string) *Logger {
+	return &Logger{parent: parent, prefix: prefix}
 }
 
-// SetLevel allows changing the log level. Events must have the same log level
-// or higher for events to be logged.
-func (b *Branch) SetLevel(level Level) *Branch {
-	atomic.StoreUint32(&b.level, uint32(level))
-	return b
+// NewTracer returns a new Logger instance that sets the tracer bit for events
+// that are logged to it.
+//
+//     tl := NewTracer(logger, "[QUERY-1234] ") // make a trace logger
+//     tl.Dev("start handling: %f", 3.14)       // [QUERY-1234] start handling: 3.14
+func NewTracer(parent *Logger, prefix string) *Logger {
+	return &Logger{parent: parent, prefix: prefix, tracer: 4}
 }
 
-// SetDev changes the log level to Dev, which allows all events to be logged.
-func (b *Branch) SetDev() *Branch {
-	atomic.StoreUint32(&b.level, uint32(Dev))
-	return b
-}
-
-// SetAdmin changes the log level to Admin, which allows all Admin and User
-// events to be logged, and Dev events to be ignored.
-func (b *Branch) SetAdmin() *Branch {
-	atomic.StoreUint32(&b.level, uint32(Admin))
-	return b
-}
-
-// SetUser changes the log level to User, which allows all User events to be
-// logged, and ignores Dev and Admin level events.
-func (b *Branch) SetUser() *Branch {
-	atomic.StoreUint32(&b.level, uint32(User))
-	return b
-}
-
-func (b *Branch) log(e *event) error {
-	if Level(atomic.LoadUint32(&b.level)) > e.level {
+func (b *Logger) log(e *event) error {
+	if b.tracer == 0 && Level(atomic.LoadUint32((*uint32)(&b.level))) > e.level {
 		return nil
 	}
 	if b.prefix != "" {
@@ -194,93 +192,70 @@ func (b *Branch) log(e *event) error {
 	return b.parent.log(e)
 }
 
+// SetLevel allows changing the log level. Events must have the same log level
+// or higher for events to be logged.
+func (b *Logger) SetLevel(level Level) *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(level))
+	return b
+}
+
+// SetDev changes the log level to Dev, which allows all events to be logged.
+func (b *Logger) SetDev() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(Dev))
+	return b
+}
+
+// SetAdmin changes the log level to Admin, which allows all Admin and User
+// events to be logged, and Dev events to be ignored.
+func (b *Logger) SetAdmin() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(Admin))
+	return b
+}
+
+// SetUser changes the log level to User, which allows all User events to be
+// logged, and ignores Dev and Admin level events.
+func (b *Logger) SetUser() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(User))
+	return b
+}
+
 // Dev is used to inject an event considered interesting for developers into the
 // log stream. Note the logger must have been set to the Dev log level for this
 // event to be logged.
-func (b *Branch) Dev(format string, args ...interface{}) error {
-	if Level(atomic.LoadUint32(&b.level)) > Dev {
+func (b *Logger) Dev(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Dev {
 		return nil
 	}
 	var prefix []string
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Dev})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Dev | b.tracer})
 }
 
 // Admin is used to inject an event considered interesting for administrators
 // into the log stream. Note the logger must have been set to the Dev or Admin
 // level for this event to be logged.
-func (b *Branch) Admin(format string, args ...interface{}) error {
-	if Level(atomic.LoadUint32(&b.level)) > Admin {
+func (b *Logger) Admin(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Admin {
 		return nil
 	}
 	var prefix []string
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Admin})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Admin | b.tracer})
 }
 
 // User is used to inject an event considered interesting for users into the log
 // stream. The created event will be logged regardless of the log level of the
 // logger, as User events are considered the highest priority events.
-func (b *Branch) User(format string, args ...interface{}) error {
+func (b *Logger) User(format string, args ...interface{}) error {
 	var prefix []string
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: User})
-}
-
-// Tracer instances log events with a tracer bit, that allows events to bypass
-// filters. Additionally any events that pass through a Tracer will have their
-// tracer bit set, causing them to bypass filters on their way to the log.
-type Tracer struct {
-	prefix string
-	parent Logger
-}
-
-// NewTracer returns a Tracer logger.
-//
-//     tl := NewTracer(logger, "[QUERY-1234] ") // make a trace logger
-//     tl.Dev("start handling: %f", 3.14)       // [QUERY-1234] start handling: 3.14
-func NewTracer(logger Logger, prefix string) *Tracer {
-	return &Tracer{parent: logger, prefix: prefix}
-}
-
-// Dev is used to inject an event considered interesting for developers into the
-// log stream. Events logged to a Tracer Logger will pass through any configured
-// Filter Loggers below it.
-func (t *Tracer) Dev(format string, args ...interface{}) error {
-	return t.parent.log(&event{prefix: []string{t.prefix}, format: format, args: args, level: Dev | 4})
-}
-
-// Admin is used to inject an event considered interesting for administrators
-// into the log stream. Events logged to a Tracer Logger will pass through any
-// configured Filter Loggers below it.
-func (t *Tracer) Admin(format string, args ...interface{}) error {
-	return t.parent.log(&event{prefix: []string{t.prefix}, format: format, args: args, level: Admin | 4})
-}
-
-// User is used to inject an event considered interesting for users into the log
-// stream. Events logged to a Tracer Logger will pass through any configured
-// Filter Loggers below it.
-func (t *Tracer) User(format string, args ...interface{}) error {
-	return t.parent.log(&event{prefix: []string{t.prefix}, format: format, args: args, level: User | 4})
-}
-
-// log is used by Loggers that compose on top of this Tracer, and prefix events
-// provided to it with the Tracer's prefix, and set the tracer bit so that
-// events will pass through Filter Loggers below it.
-//
-// ??? not sure whether this should be provided. Do we really want Tracer to be
-// used to build loggers on top of? Tracers are supposed to be light-weight and
-// ephemeral.
-func (t *Tracer) log(e *event) error {
-	e.level |= 4
-	e.prefix = append([]string{t.prefix}, e.prefix...)
-	return t.parent.log(e)
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: User | b.tracer})
 }
 
 // compileFormat converts the format string into a slice of functions to invoke
@@ -300,8 +275,10 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 	var capturingTokenIndex int
 	var capturingToken bool  // false, because start off capturing buffer runes
 	var nextRuneEscaped bool // true when next rune has been escaped
+	var isFinalNewlineNeeded bool
 
 	for ri, rune := range format {
+		isFinalNewlineNeeded = rune != '\n'
 		if nextRuneEscaped {
 			// when this rune has been escaped, then just write it out to
 			// whichever buffer we're collecting to right now
@@ -375,8 +352,12 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 		return nil, fmt.Errorf("cannot compile log format with unmatched opening curly braces; rune %d", capturingTokenIndex)
 	}
 
-	buf = append(buf, '\n') // each log line terminated by newline byte
-	emitters = append(emitters, makeStringEmitter(string(buf)))
+	if isFinalNewlineNeeded {
+		buf = append(buf, '\n') // each log line terminated by newline byte
+	}
+	if len(buf) > 0 {
+		emitters = append(emitters, makeStringEmitter(string(buf)))
+	}
 
 	return emitters, nil
 }
