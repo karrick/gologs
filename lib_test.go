@@ -2,9 +2,7 @@ package gologs
 
 import (
 	"bytes"
-	"fmt"
 	"io"
-	"os"
 	"testing"
 )
 
@@ -19,19 +17,6 @@ func MustCompile(w io.Writer, template string) *Logger {
 		panic(err)
 	}
 	return base
-}
-
-func Example() {
-	bb := new(bytes.Buffer)
-	log, err := New(bb, "[BASE] {message}")
-	if err != nil {
-		os.Exit(1)
-	}
-
-	log.User("%v %v %v", 3.14, "hello", struct{}{})
-	fmt.Printf("%s", bb.Bytes())
-	// Output:
-	// [BASE] 3.14 hello {}
 }
 
 func TestLogger(t *testing.T) {

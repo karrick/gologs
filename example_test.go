@@ -1,17 +1,15 @@
-package gologs_test
+package gologs
 
 import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/karrick/gologs"
 )
 
 func ExampleLogger() {
 	// Initialize the logger mode based on the provided command line flags.
 	// Create a filtered logger by compiling the log format string.
-	log, err := gologs.New(os.Stdout, "{message}")
+	log, err := New(os.Stdout, "{message}")
 	if err != nil {
 		panic(err)
 	}
@@ -19,7 +17,7 @@ func ExampleLogger() {
 	log.Admin("Starting program")
 	log.Dev("something important to developers...")
 
-	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
+	a := &Alpha{Log: NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
 	a.run([]string{"one", "@two", "three", "@four"})
 
 	// Output:
@@ -30,7 +28,7 @@ func ExampleLogger() {
 }
 
 type Alpha struct {
-	Log *gologs.Logger
+	Log *Logger
 	// other fields...
 }
 
@@ -45,7 +43,7 @@ func (a *Alpha) run(args []string) {
 		if strings.HasPrefix(arg, "@") {
 			// For demonstration purposes, let's arbitrarily cause some of the
 			// events to be logged with tracers.
-			request.Log = gologs.NewTracer(request.Log, fmt.Sprintf("[arg=%s] ", arg))
+			request.Log = NewTracer(request.Log, fmt.Sprintf("[arg=%s] ", arg))
 		}
 		request.Handle()
 	}
@@ -54,8 +52,8 @@ func (a *Alpha) run(args []string) {
 // Request is a demonstration structure that has its own logger, which it uses
 // to log all events relating to handling this request.
 type Request struct {
-	Log   *gologs.Logger // Log is the logger for this particular request.
-	Query string         // Query is the request payload.
+	Log   *Logger // Log is the logger for this particular request.
+	Query string  // Query is the request payload.
 }
 
 func (r *Request) Handle() {
