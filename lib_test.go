@@ -68,6 +68,9 @@ func TestLogger(t *testing.T) {
 		}
 
 		t.Run("should-ignore", func(t *testing.T) {
+			t.Run("default-logger-dev-event", func(t *testing.T) {
+				check(t, func(f *Logger) { f.Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
+			})
 			t.Run("admin-logger-dev-event", func(t *testing.T) {
 				check(t, func(f *Logger) { f.SetAdmin().Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "")
 			})
@@ -80,9 +83,6 @@ func TestLogger(t *testing.T) {
 		})
 
 		t.Run("should-convey", func(t *testing.T) {
-			t.Run("default-logger-dev-event", func(t *testing.T) {
-				check(t, func(f *Logger) { f.Dev("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
-			})
 			t.Run("admin-logger-admin-event", func(t *testing.T) {
 				check(t, func(f *Logger) { f.SetAdmin().Admin("%v %v %v", 3.14, "hello", struct{}{}) }, "[BASE] 3.14 hello {}\n")
 			})

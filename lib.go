@@ -146,7 +146,7 @@ func New(w io.Writer, template string) (*Logger, error) {
 	if min < 128 {
 		min = 128
 	}
-	return &Logger{parent: &base{w: w, formatters: formatters, c: min}}, nil
+	return &Logger{parent: &base{w: w, formatters: formatters, c: min}, level: User}, nil
 }
 
 // NewBranch returns a new Logger instance that logs to parent, but has its own
