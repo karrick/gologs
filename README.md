@@ -3,6 +3,26 @@
 Online documentation:
 [![GoDoc](https://godoc.org/github.com/karrick/gologs?status.svg)](https://godoc.org/github.com/karrick/gologs)
 
+Goals:
+
+1. This should work within the Go ecosystem. Specifically, it should
+   emit logs to any io.Writer.
+
+1. This should be flexible enough to provide for use cases not
+   originally envisioned, yet be easy enough to use to facilitate
+   adoption. I should want to reach for this library for all my
+   logging needs, for both command line and long running daemons.
+
+1. This should be lightweight. This should not spin up any go
+   routines. This should compile the log format line during
+   initialization, and use the formatters for each event to be
+   logged. Events that do not get logged should not be formatted. This
+   should not ask the OS for the system time if log format
+   specification does not require it.
+
+1. This should be correct. It should not emit a single log event via
+   multiple calls to the underlying io.Writer's Write method.
+
 ## Example
 
 ```Go
@@ -370,7 +390,7 @@ requires it.
 ```Go
     func NewRequest(log *gologs.Logger, key string) (*Request, error) {
         r := &R{Log: log, Key: key}
-        if r.isSpecial() {
+        if r.isSpecial {
             r.Log = gologs.NewTracer(r.Log, fmt.Sprintf("[REQUEST %s] ", r.Key))
         }
         return r, nil

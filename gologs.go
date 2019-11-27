@@ -74,10 +74,6 @@ type event struct {
 	level  Level
 }
 
-type logger interface {
-	log(*event) error
-}
-
 // base is at the bottom of the logger tree, and formats the event to a byte
 // slice, ensuring it ends with a newline, and writes its output to its
 // underlying io.Writer.
@@ -118,6 +114,10 @@ func (b *base) log(e *event) error {
 	_, err := b.w.Write(buf)
 	b.m.Unlock()
 	return err
+}
+
+type logger interface {
+	log(*event) error
 }
 
 // Logger provides methods to create events to be logged. Logger instances are
@@ -161,10 +161,10 @@ func New(w io.Writer, template string) (*Logger, error) {
 		min = 128
 	}
 	b := &base{
-		w:              w,
-		formatters:     formatters,
 		c:              min,
+		formatters:     formatters,
 		isTimeRequired: isTimeRequired,
+		w:              w,
 	}
 	return &Logger{parent: b, level: User}, nil
 }
