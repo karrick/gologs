@@ -10,7 +10,6 @@ import (
 
 // Rather than use the log standard library, this example creates a global log
 // variable, and once initialized, uses it to log events.
-
 var log *gologs.Logger
 
 func main() {

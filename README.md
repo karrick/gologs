@@ -1,8 +1,5 @@
 # gologs
 
-Online documentation:
-[![GoDoc](https://godoc.org/github.com/karrick/gologs?status.svg)](https://godoc.org/github.com/karrick/gologs)
-
 Goals:
 
 1. This should work within the Go ecosystem. Specifically, it should
@@ -14,14 +11,16 @@ Goals:
    logging needs, for both command line and long running daemons.
 
 1. This should be lightweight. This should not spin up any go
-   routines. This should compile the log format line during
-   initialization, and use the formatters for each event to be
-   logged. Events that do not get logged should not be formatted. This
-   should not ask the OS for the system time if log format
-   specification does not require it.
+   routines. This should process the log format line only during
+   initialization. Events that do not get logged should not be
+   formatted. This should not ask the OS for the system time if log
+   format specification does not require it.
 
-1. This should be correct. It should not emit a single log event via
-   multiple calls to the underlying io.Writer's Write method.
+1. This should be correct. It should never invoke Write more than once
+   per logged event.
+
+Online documentation:
+[![GoDoc](https://godoc.org/github.com/karrick/gologs?status.svg)](https://godoc.org/github.com/karrick/gologs)
 
 ## Example
 
@@ -38,7 +37,6 @@ import (
 
 // Rather than use the log standard library, this example creates a global log
 // variable, and once initialized, uses it to log events.
-
 var log *gologs.Logger
 
 func main() {
