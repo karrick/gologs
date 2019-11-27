@@ -11,17 +11,22 @@ import (
 	"github.com/karrick/gologs"
 )
 
+// Rather than creating a global log variable, in this example each struct has a
+// log field it will use when it needs to log events.
+
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
 	optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
 	flag.Parse()
 
-	// Initialize the logger mode based on the provided command line flags.
-	// Create a filtered logger by compiling the log format string.
-	log, err := gologs.New(os.Stderr, "{program} {message}")
+	// Create a local log variable, which will be used to create log branches
+	// for other program modules.
+	log, err := gologs.New(os.Stderr, gologs.DefaultServiceFormat)
 	if err != nil {
 		panic(err)
 	}
+
+	// Configure log level according to command line flags.
 	if *optDebug {
 		log.SetDev()
 	} else if *optVerbose {
@@ -29,7 +34,8 @@ func main() {
 	} else {
 		log.SetUser()
 	}
-	log.Admin("Starting program; debug: %v; verbose: %v", *optDebug, *optVerbose)
+
+	log.Admin("Starting service; debug: %v; verbose: %v", *optDebug, *optVerbose)
 	log.Dev("something important to developers...")
 
 	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
