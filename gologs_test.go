@@ -2,24 +2,56 @@ package gologs
 
 import (
 	"bytes"
-	"io"
 	"testing"
 )
 
-// MustCompile returns a new Base Logger, or will panic if the template is not
-// valid.
-//
-// ??? This function is not yet part of the library, but is a likely candidate
-// for future inclusion.
-func MustCompile(w io.Writer, template string) *Logger {
-	base, err := New(w, template)
-	if err != nil {
-		panic(err)
-	}
-	return base
-}
-
 func TestLogger(t *testing.T) {
+	t.Run("is time required", func(t *testing.T) {
+		t.Run("is not required", func(t *testing.T) {
+			_, isTimeRequired, err := compileFormat("{message}")
+			ensureError(t, err)
+			if got, want := isTimeRequired, false; got != want {
+				t.Errorf("GOT: %v; WANT: %v", got, want)
+			}
+		})
+		t.Run("is required", func(t *testing.T) {
+			t.Run("epoch", func(t *testing.T) {
+				_, isTimeRequired, err := compileFormat("{epoch} {message}")
+				ensureError(t, err)
+				if got, want := isTimeRequired, true; got != want {
+					t.Errorf("GOT: %v; WANT: %v", got, want)
+				}
+			})
+			t.Run("iso8601", func(t *testing.T) {
+				_, isTimeRequired, err := compileFormat("{iso8601} {message}")
+				ensureError(t, err)
+				if got, want := isTimeRequired, true; got != want {
+					t.Errorf("GOT: %v; WANT: %v", got, want)
+				}
+			})
+			t.Run("localtime=2006/01/02 15:04:05", func(t *testing.T) {
+				_, isTimeRequired, err := compileFormat("{localtime=2006/01/02 15:04:05} {message}")
+				ensureError(t, err)
+				if got, want := isTimeRequired, true; got != want {
+					t.Errorf("GOT: %v; WANT: %v", got, want)
+				}
+			})
+			t.Run("utctime=2006/01/02 15:04:05", func(t *testing.T) {
+				_, isTimeRequired, err := compileFormat("{utctime=2006/01/02 15:04:05} {message}")
+				ensureError(t, err)
+				if got, want := isTimeRequired, true; got != want {
+					t.Errorf("GOT: %v; WANT: %v", got, want)
+				}
+			})
+			t.Run("timestamp", func(t *testing.T) {
+				_, isTimeRequired, err := compileFormat("{message} {timestamp}")
+				ensureError(t, err)
+				if got, want := isTimeRequired, true; got != want {
+					t.Errorf("GOT: %v; WANT: %v", got, want)
+				}
+			})
+		})
+	})
 	t.Run("prefix", func(t *testing.T) {
 		check := func(t *testing.T, callback func(*Logger), want string) {
 			t.Helper()

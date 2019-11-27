@@ -82,10 +82,11 @@ type logger interface {
 // slice, ensuring it ends with a newline, and writes its output to its
 // underlying io.Writer.
 type base struct {
-	formatters []func(*event, *[]byte)
-	w          io.Writer
-	c          int // c is count of bytes to allocate for formatting log line
-	m          sync.Mutex
+	formatters     []func(*event, *[]byte)
+	w              io.Writer
+	c              int // c is count of bytes to allocate for formatting log line
+	m              sync.Mutex
+	isTimeRequired bool
 }
 
 func (b *base) log(e *event) error {
@@ -101,7 +102,9 @@ func (b *base) log(e *event) error {
 	// time for an event, then race for the mutex below that serializes output
 	// to the underlying io.Writer. While not dangerous, the logic might allow
 	// two log lines to be emitted to the writer in opposite timestamp order.
-	e.when = time.Now()
+	if b.isTimeRequired {
+		e.when = time.Now()
+	}
 
 	// Format the event according to the compiled formatting functions created
 	// when the logger was created, according to the log template, i.e.,
@@ -142,7 +145,7 @@ type Logger struct {
 // more likely to spend a few minutes to build in the ability to configure the
 // log level based on their service needs.
 func New(w io.Writer, template string) (*Logger, error) {
-	formatters, err := compileFormat(template)
+	formatters, isTimeRequired, err := compileFormat(template)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +160,13 @@ func New(w io.Writer, template string) (*Logger, error) {
 	if min < 128 {
 		min = 128
 	}
-	return &Logger{parent: &base{w: w, formatters: formatters, c: min}, level: User}, nil
+	b := &base{
+		w:              w,
+		formatters:     formatters,
+		c:              min,
+		isTimeRequired: isTimeRequired,
+	}
+	return &Logger{parent: b, level: User}, nil
 }
 
 // NewBranch returns a new Logger instance that logs to parent, but has its own
@@ -275,7 +284,7 @@ func (b *Logger) User(format string, args ...interface{}) error {
 // emit, and consuming runes to create a token that is intended to match one of
 // the pre-defined format specifier tokens, or an undefined format specifier
 // token that begins with "http-".
-func compileFormat(format string) ([]func(*event, *[]byte), error) {
+func compileFormat(format string) ([]func(*event, *[]byte), bool, error) {
 	// build slice of emitter functions, each will emit the requested
 	// information
 	var emitters []func(*event, *[]byte)
@@ -287,6 +296,7 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 	var capturingToken bool  // false, because start off capturing buffer runes
 	var nextRuneEscaped bool // true when next rune has been escaped
 	var isFinalNewlineNeeded bool
+	var isTimeRequired bool // true when any of the formatters require system time
 
 	for ri, rune := range format {
 		isFinalNewlineNeeded = rune != '\n'
@@ -309,7 +319,7 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 		}
 		if rune == '{' {
 			if capturingToken {
-				return nil, fmt.Errorf("cannot compile log format with embedded curly braces; runes %d and %d", capturingTokenIndex, ri)
+				return nil, false, fmt.Errorf("cannot compile log format with embedded curly braces; runes %d and %d", capturingTokenIndex, ri)
 			}
 			// Stop capturing buf, and begin capturing token.  NOTE: Because I
 			// did not want to allow Base Logger creation to fail, undefined
@@ -321,13 +331,15 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 			capturingTokenIndex = ri
 		} else if rune == '}' {
 			if !capturingToken {
-				return nil, fmt.Errorf("cannot compile log format with unmatched closing curly braces; rune %d", ri)
+				return nil, false, fmt.Errorf("cannot compile log format with unmatched closing curly braces; rune %d", ri)
 			}
 			// Stop capturing token, and begin capturing buffer.
 			switch tok := string(token); tok {
 			case "epoch":
+				isTimeRequired = true
 				emitters = append(emitters, epochEmitter)
 			case "iso8601":
+				isTimeRequired = true
 				emitters = append(emitters, makeUTCTimestampEmitter(time.RFC3339))
 			case "level":
 				emitters = append(emitters, levelEmitter)
@@ -337,15 +349,18 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 				emitters = append(emitters, makeProgramEmitter())
 			case "timestamp":
 				// Emulate timestamp format from stdlib log (log.LstdFlags).
+				isTimeRequired = true
 				emitters = append(emitters, makeUTCTimestampEmitter("2006/01/02 15:04:05"))
 			default:
 				// ??? Not sure how I feel about the below API.
 				if strings.HasPrefix(tok, "localtime=") {
+					isTimeRequired = true
 					emitters = append(emitters, makeLocalTimestampEmitter(tok[10:]))
 				} else if strings.HasPrefix(tok, "utctime=") {
+					isTimeRequired = true
 					emitters = append(emitters, makeUTCTimestampEmitter(tok[8:]))
 				} else {
-					return nil, fmt.Errorf("cannot compile log format with unknown formatting verb %q", token)
+					return nil, false, fmt.Errorf("cannot compile log format with unknown formatting verb %q", token)
 				}
 			}
 			token = token[:0]
@@ -360,7 +375,7 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 		}
 	}
 	if capturingToken {
-		return nil, fmt.Errorf("cannot compile log format with unmatched opening curly braces; rune %d", capturingTokenIndex)
+		return nil, false, fmt.Errorf("cannot compile log format with unmatched opening curly braces; rune %d", capturingTokenIndex)
 	}
 
 	if isFinalNewlineNeeded {
@@ -370,7 +385,7 @@ func compileFormat(format string) ([]func(*event, *[]byte), error) {
 		emitters = append(emitters, makeStringEmitter(string(buf)))
 	}
 
-	return emitters, nil
+	return emitters, isTimeRequired, nil
 }
 
 func appendRune(buf *[]byte, r rune) {

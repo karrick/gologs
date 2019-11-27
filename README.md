@@ -9,27 +9,32 @@ Online documentation:
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
-	"io"
 	"os"
-	"strings"
 
 	"github.com/karrick/gologs"
 )
+
+// Rather than use the log standard library, this example creates a global log
+// variable, and once initialized, uses it to log events.
+
+var log *gologs.Logger
 
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
 	optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
 	flag.Parse()
 
-	// Initialize the logger mode based on the provided command line flags.
-	// Create a filtered logger by compiling the log format string.
-	log, err := gologs.New(os.Stderr, "{program} {message}")
+	// Initialize the global log variable, which will be used very much like the
+	// log standard library would be used.
+	var err error
+	log, err = gologs.New(os.Stderr, gologs.DefaultCommandFormat)
 	if err != nil {
 		panic(err)
 	}
+
+	// Configure log level according to command line flags.
 	if *optDebug {
 		log.SetDev()
 	} else if *optVerbose {
@@ -37,53 +42,27 @@ func main() {
 	} else {
 		log.SetUser()
 	}
-	log.Admin("Starting program; debug: %v; verbose: %v", *optDebug, *optVerbose)
-	log.Dev("something important to developers...")
 
-	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
-	if err := a.run(os.Stdin); err != nil {
-		log.User("%s", err)
+	for _, arg := range flag.Args() {
+		log.Admin("handling arg: %q", arg)
+		if err := printSize(arg); err != nil {
+			log.User("%s", err)
+		}
 	}
 }
 
-type Alpha struct {
-	Log *gologs.Logger
-	// other fields...
-}
+func printSize(pathname string) error {
+	stat, err := os.Stat(pathname)
+	if err != nil {
+		return err
+	}
+	log.Dev("file stat: %v", stat)
 
-func (a *Alpha) run(r io.Reader) error {
-	a.Log.Admin("Started module")
-
-	scan := bufio.NewScanner(r)
-
-	for scan.Scan() {
-		// Create a request instance with its own logger.
-		request := &Request{
-			Log:   a.Log, // Usually a request can be logged at same level as module.
-			Query: scan.Text(),
-		}
-		if strings.HasPrefix(request.Query, "@") {
-			// For demonstration purposes, let's arbitrarily cause some of the
-			// events to be logged with tracers.
-			request.Log = gologs.NewTracer(request.Log, fmt.Sprintf("[REQUEST %s] ", request.Query))
-		}
-		request.Handle()
+	if (stat.Mode() & os.ModeType) == 0 {
+		fmt.Printf("%s is %d bytes", pathname, stat.Size())
 	}
 
-	return scan.Err()
-}
-
-// Request is a demonstration structure that has its own logger, which it uses
-// to log all events relating to handling this request.
-type Request struct {
-	Log   *gologs.Logger // Log is the logger for this particular request.
-	Query string         // Query is the request payload.
-}
-
-func (r *Request) Handle() {
-	// Anywhere in the call flow for the request, if it wants to log something,
-	// it should log to the Request's logger.
-	r.Log.Dev("handling request: %v", r.Query)
+	return nil
 }
 ```
 
@@ -91,16 +70,16 @@ func (r *Request) Handle() {
 
 ### Creating a Logger Instance
 
-Everything written to this logger is formatted according to the
+Everything written by this logger is formatted according to the
 provided template string, given a trailing newline, and written to the
 underlying io.Writer. That io.Writer might be os.Stderr, or it might
 be a log rolling library, which in turn, is writting to a set of
 managed log files. The library provides a few default log template
 strings, but in every case, when the logger is created, the template
-string is compiled to tree of function pointers that is evaluated over
-each log event to format the event according to the template. This is
-in contrast to many other logging libraries that evaluate the template
-string for each event to be logged.
+string is compiled to a slice of function pointers that are evaluated
+over each log event to format the event according to the
+template. This is in contrast to many other logging libraries that
+evaluate the template string for each event to be logged.
 
 ```Go
     log, err := gologs.New(os.Stderr, gologs.DefaultServiceFormat)
@@ -116,34 +95,33 @@ When writing software, much thought goes into choosing which level to
 emit logs at for various events. Is this a debug level event? Or
 verbose? What about the difference between warning and error?
 
-Rather than selecting from the five common log levels, this library
-focuses on the audience of each particular log event rather than what
-type of event is being logged. There are three audiences for any log
-event: the user running the program; the administrator running this
-program; and the developers working on the program.
+I'd like to advocate a slightly different focus. This library
+advocates focusing on the audience of each particular log event rather
+than what type of event is being logged. There are three audiences for
+any log event: the user running the program; the administrator running
+this program; and the developers working on the program.
 
-A regular user wants a program to work. One of the tennants of The
-UNIX Philosophy is to _Avoid Unnecessary output_. When a program can
-do a task quickly, just do it, and emit the results. The UNIX `rm foo`
-command does not need to say, "foo deleted", but it should say why it
-was not deleted if it could not delete `foo`. This is what User mode
-logging is for. Tell me only the most important of things. But those
-important things are not limited to errors. There are many events that
-a user might deem important to know about even if not an error.
+One of the tennants of The UNIX Philosophy is to _Avoid Unnecessary
+output_. When a program can do a task quickly, just do it, and emit
+any requested output. The UNIX `rm foo` command does not need to say,
+"foo deleted", but it should say why the file system entry was not
+deleted when it cannot delete it. This is what User mode logging is
+for. When the user must intervene because the command did not do what
+it was told to do, emit a message as to why.
 
-An administrator wants a program to work, and wants to know everything
-a user might want to know about, but with a bit more information about
-what the program is doing. An administrator might want to know when
-the program started, if it's a service, what signals it received, when
-it decides to re-read its configuration. When a service upon which it
+In addition to the messages a regular user might want to know about,
+an administrator also wants to get a bit more information about what
+the program is doing. An administrator might want to know when the
+program started, if it's a service, what signals it received, when it
+decides to re-read its configuration. When a service upon which it
 depends failed and it had to resend a query. There are numerous
 examples of recoverable errors, and non error events that an
 administrator would want to know about.
 
-A developer also wants a program to work, and usually want to know why
-it's not working, so they can fix it. They want to see what a request
-looks like when the request should work but is failing for some
-reason, for instance.
+In addition to everything a user and an administrator want to see, a
+developer also wants to know the logic path a program follows as it
+processes data. For instance, they want to see what a request looks
+like when the request should work but is failing for some reason.
 
 The log levels are designed to help developers to think about the
 audience of the logged event, and phrase the wording accordingly. In
@@ -199,9 +177,10 @@ addressed to a program administrator:
     log.Admin("WARNING: config threshold too low; using default %d: %d < %d", default, value, threshold)
 ```
 
-When a logger is in User mode, only User events are logged. When a
-logger is in Admin mode, only Admin and User events are logged. When a
-logger is in Dev move, all Dev, Admin, and User events are logged.
+When a logger has been configured for User mode, only User events are
+logged. When a logger has been configured for Admin mode, only Admin
+and User events are logged. When a logger has been configured for Dev
+move, all Dev, Admin, and User events are logged.
 
 Note the logger mode for a newly created Logger is User, which I feel
 is in keeping with the UNIX philosophy to _Avoid unnecessary
@@ -221,7 +200,7 @@ loggging of developer events would saturate the logs.
 
 This library allows this workflow by allowing a developer to create a
 tree of logs with multiple branches, and each branch can have an
-independently controlled log level. These log branches are quite
+independently controlled log level. These log branches are
 lightweight, require no go routines to facilitate, and can even be
 ephemeral, and demonstrated later in the Tracer Logging section.
 
@@ -233,7 +212,7 @@ what I like to call a tree of logs. At the base of the tree, events
 are written to an underlying io.Writer. This allows a developer to
 create a log and have it write to standard error, standard output, a
 file handle, a log rolling library which writes to a file, or any
-other io.Writer, thanks to Go interfaces.
+other structure that implements the io.Writer interface.
 
 #### Creating New Branches for the Log Tree
 
@@ -349,28 +328,21 @@ underlying io.Writer.
     }
 ```
 
-It is important to remember that tracer events bypass all log level
-filters. So `log`, `Foo`, and `Bar` all might be set for administrator
-level, but you want to follow a particular request through the system,
-without changing the log levels, also causing the system to log every
-other request. Tracer logic is not meant to be added and removed while
-debugging a program, but rather left in place, run in production, but
-not used, unless some special developer or administrator requested
-token marks a particular event as one for which all events should be
-logged.
+It is important to remember that events sent to a Tracer Logger bypass
+all log level filters. So `log`, `Foo`, and `Bar` all might be set for
+administrator level, but you want to follow a particular request
+through the system, without changing the log levels, also causing the
+system to log every other request. Tracer logic is not meant to be
+added and removed while debugging a program, but rather left in place,
+run in production, but not used, unless some special developer or
+administrator requested token marks a particular event as one for
+which all events should be logged.
 
-####### HERE
-
-Log levels allow a program to control what gets logged and what gets
-ignored. Log braches allow the developer to have simultaneously
-different log levels in different parts of a program, each
-independently controlled. Sometimes it is also convenient to emit one
-or more events that will be written to the logs regardless of the log
-level. Normally this is done by changing the log level a particular
-event is emitted as. I've come to the conclusion that there is a
-better way, and I'd like to describe it by means of an example.
+Here's an example of what Tracer Loggers are trying to eliminate:
 
 ```Go
+    // Example of desired behavior without tracer logic. Each log line becomes
+    // a conditional.
     func (r *Request) Handler() {
         // It is inconvenient to branch log events each place you want to
         // emit a log event.
@@ -411,23 +383,3 @@ requires it.
         r.Log.Dev("request.Cycles: %d", r.Cycles)
     }
 ```
-
-Note the 
-
-This allows the simplified log levels described above to be used for
-all logs, but tracing can be turned on for a set of log events
-pertaining to a single request. For instance in the past, I have done
-this by suffixing `&debug=true` to the URI of a request. The
-undocumented API would cause all events for that request to get
-logged, regardless of the log level. If a user reported a problem with
-a valid looking request, I could repeat their request with
-`&debug=true` appended to it while watching the logs to follow the
-request run its way through the service. It was an effective solution
-I have used to debug many problems.
-
-## Description
-
-### A Tree of Logs?
-
-### Tracer logging
-
