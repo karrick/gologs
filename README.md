@@ -19,7 +19,6 @@ Goals:
 1. This should be correct. It should never invoke Write more than once
    per logged event.
 
-Online documentation:
 [![GoDoc](https://godoc.org/github.com/karrick/gologs?status.svg)](https://godoc.org/github.com/karrick/gologs)
 
 ## Example
