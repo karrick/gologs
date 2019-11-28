@@ -41,6 +41,7 @@ var log *gologs.Logger
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
 	optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
+	optQuiet := flag.Bool("quiet", false, "Print warning and error output to stderr")
 	flag.Parse()
 
 	// Initialize the global log variable, which will be used very much like the
@@ -56,6 +57,8 @@ func main() {
 		log.SetDebug()
 	} else if *optVerbose {
 		log.SetVerbose()
+	} else if *optQuiet {
+		log.SetError()
 	} else {
 		log.SetInfo()
 	}
