@@ -15,6 +15,7 @@ var log *gologs.Logger
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
 	optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
+	optQuiet := flag.Bool("quiet", false, "Print warning and error output to stderr")
 	flag.Parse()
 
 	// Initialize the global log variable, which will be used very much like the
@@ -27,17 +28,19 @@ func main() {
 
 	// Configure log level according to command line flags.
 	if *optDebug {
-		log.SetDev()
+		log.SetDebug()
 	} else if *optVerbose {
-		log.SetAdmin()
+		log.SetVerbose()
+	} else if *optQuiet {
+		log.SetError()
 	} else {
-		log.SetUser()
+		log.SetInfo()
 	}
 
 	for _, arg := range flag.Args() {
-		log.Admin("handling arg: %q", arg)
+		log.Verbose("handling arg: %q", arg)
 		if err := printSize(arg); err != nil {
-			log.User("%s", err)
+			log.Info("%s", err)
 		}
 	}
 }
@@ -47,7 +50,7 @@ func printSize(pathname string) error {
 	if err != nil {
 		return err
 	}
-	log.Dev("file stat: %v", stat)
+	log.Debug("file stat: %v", stat)
 
 	if (stat.Mode() & os.ModeType) == 0 {
 		fmt.Printf("%s is %d bytes", pathname, stat.Size())

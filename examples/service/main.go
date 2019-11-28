@@ -17,6 +17,7 @@ import (
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
 	optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
+	optQuiet := flag.Bool("quiet", false, "Print warning and error output to stderr")
 	flag.Parse()
 
 	// Create a local log variable, which will be used to create log branches
@@ -28,19 +29,21 @@ func main() {
 
 	// Configure log level according to command line flags.
 	if *optDebug {
-		log.SetDev()
+		log.SetDebug()
 	} else if *optVerbose {
-		log.SetAdmin()
+		log.SetVerbose()
+	} else if *optQuiet {
+		log.SetError()
 	} else {
-		log.SetUser()
+		log.SetInfo()
 	}
 
-	log.Admin("Starting service; debug: %v; verbose: %v", *optDebug, *optVerbose)
-	log.Dev("something important to developers...")
+	log.Verbose("Starting service; debug: %v; verbose: %v", *optDebug, *optVerbose)
+	log.Debug("something important to developers...")
 
-	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
+	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetVerbose()}
 	if err := a.run(os.Stdin); err != nil {
-		log.User("%s", err)
+		log.Info("%s", err)
 	}
 }
 
@@ -50,7 +53,7 @@ type Alpha struct {
 }
 
 func (a *Alpha) run(r io.Reader) error {
-	a.Log.Admin("Started module")
+	a.Log.Verbose("Started module")
 
 	scan := bufio.NewScanner(r)
 
@@ -81,5 +84,5 @@ type Request struct {
 func (r *Request) Handle() {
 	// Anywhere in the call flow for the request, if it wants to log something,
 	// it should log to the Request's logger.
-	r.Log.Dev("handling request: %v", r.Query)
+	r.Log.Debug("handling request: %v", r.Query)
 }

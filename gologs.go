@@ -29,34 +29,38 @@ const DefaultServiceFormat = "{timestamp} {message}"
 type Level uint32
 
 const (
-	// Dev is for developers; show me all events. Default mode for Logger. As
-	// one begins development of a program, one will likely want to log all
-	// Developer events, so this is the default mode for the logger. Once a
-	// program is reaching a higher level of maturity, it is more likely the
-	// developer will have had an opportunity to allow setting the program log
-	// levels according to regular conventions, and hide most of the developer
-	// related log events.
-	Dev Level = iota
+	// Debug is for events that might help a person understand the cause of a
+	// bug in a program.
+	Debug Level = iota
 
-	// Admin is for administrators; show me detailed operational events. A long
-	// running program running as a daemon is most likely going to run with log
-	// level set to emit events that an administrator is concerned with.
-	Admin
+	// Verbose is for events that might help a person understand the state of a
+	// program.
+	Verbose
 
-	// User is for users; show me major operational events. A command line
-	// program with no special command line options for logs will likely want to
-	// run with logging set for user level events.
-	User
+	// Info is for events that annotate high level status of a program.
+	Info
+
+	// Warning is for events that indicate a possible problem with the
+	// program. Warning events should be investigated and corrected soon.
+	Warning
+
+	// Error is for events that indicate a definite problem that might prevent
+	// normal program execution. Error events should be corrected immediately.
+	Error
 )
 
 func (l Level) String() string {
 	switch l {
-	case User:
-		return "USER"
-	case Admin:
-		return "ADMIN"
-	case Dev:
-		return "DEV"
+	case Debug:
+		return "DEBUG"
+	case Verbose:
+		return "VERBOSE"
+	case Info:
+		return "INFO"
+	case Warning:
+		return "WARNING"
+	case Error:
+		return "ERROR"
 	}
 	// NOT REACHED
 	panic(fmt.Sprintf("invalid log level: %v", uint32(l)))
@@ -125,9 +129,11 @@ type logger interface {
 // either filter events based on a configured level, or prefix events with a
 // configured string.
 //
-// When a logger is in User mode, only User events are logged. When a logger is
-// in Admin mode, only Admin and User events are logged. When a logger is in Dev
-// move, all Dev, Admin, and User events are logged.
+// When a logger is in Error mode, only Error events are logged. When a logger
+// is in Warning mode, only Error and Warning events are logged. When a logger
+// is in Info mode, only Error, Warning, and Info events are logged. When a
+// logger is in Verbose mode, only Error, Warning, Info, and Verbose events are
+// logged. When a logger is in Debug mode, all events are logged.
 type Logger struct {
 	prefix string // prefix is an option string, that when not empty, will prefix events
 	parent logger // parent is the logger this branch sends events to
@@ -138,7 +144,7 @@ type Logger struct {
 // New returns a new Logger instance that emits logged events to w after
 // formatting the event according to template.
 //
-// Logger instances returned by this function are initialized to User level,
+// Logger instances returned by this function are initialized to Warning level,
 // which I feel is in keeping with the UNIX philosophy to _Avoid unnecessary
 // output_. Simple command line programs will not need to set the log level to
 // prevent spewing too many log events. While service application developers are
@@ -160,13 +166,13 @@ func New(w io.Writer, template string) (*Logger, error) {
 	if min < 128 {
 		min = 128
 	}
-	b := &base{
+	parent := &base{
 		c:              min,
 		formatters:     formatters,
 		isTimeRequired: isTimeRequired,
 		w:              w,
 	}
-	return &Logger{parent: b, level: User}, nil
+	return &Logger{parent: parent, level: Warning}, nil
 }
 
 // NewBranch returns a new Logger instance that logs to parent, but has its own
@@ -175,7 +181,7 @@ func New(w io.Writer, template string) (*Logger, error) {
 // Note that events are filtered as the flow from their origin branch to the
 // base. When a parent Logger has a more restrictive log level than a child
 // Logger, the event might pass through from a child to its parent, but be
-// filtered out at the parent.
+// filtered out once it arrives at the parent.
 func NewBranch(parent *Logger) *Logger {
 	return &Logger{parent: parent}
 }
@@ -188,7 +194,7 @@ func NewBranch(parent *Logger) *Logger {
 // Note that events are filtered as the flow from their origin branch to the
 // base. When a parent Logger has a more restrictive log level than a child
 // Logger, the event might pass through from a child to its parent, but be
-// filtered out at the parent.
+// filtered out once they arrive at the parent.
 func NewBranchWithPrefix(parent *Logger, prefix string) *Logger {
 	return &Logger{parent: parent, prefix: prefix}
 }
@@ -197,9 +203,9 @@ func NewBranchWithPrefix(parent *Logger, prefix string) *Logger {
 // that are logged to it.
 //
 //     tl := NewTracer(logger, "[QUERY-1234] ") // make a trace logger
-//     tl.Dev("start handling: %f", 3.14)       // [QUERY-1234] start handling: 3.14
+//     tl.Debug("start handling: %f", 3.14)       // [QUERY-1234] start handling: 3.14
 func NewTracer(parent *Logger, prefix string) *Logger {
-	return &Logger{parent: parent, prefix: prefix, tracer: User + 1}
+	return &Logger{parent: parent, prefix: prefix, tracer: Error + 1}
 }
 
 func (b *Logger) log(e *event) error {
@@ -219,72 +225,108 @@ func (b *Logger) SetLevel(level Level) *Logger {
 	return b
 }
 
-// SetDev changes the log level to Dev, which allows all events to be logged.
-func (b *Logger) SetDev() *Logger {
-	atomic.StoreUint32((*uint32)(&b.level), uint32(Dev))
+// SetDebug changes the log level to Debug, which allows all events to be
+// logged.
+func (b *Logger) SetDebug() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(Debug))
 	return b
 }
 
-// SetAdmin changes the log level to Admin, which allows all Admin and User
-// events to be logged, and Dev events to be ignored.
-func (b *Logger) SetAdmin() *Logger {
-	atomic.StoreUint32((*uint32)(&b.level), uint32(Admin))
+// SetVerbose changes the log level to Verbose, which causes all Debug events to
+// be ignored, and all Verbose, Info, Warning, and Error events to be logged.
+func (b *Logger) SetVerbose() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(Verbose))
 	return b
 }
 
-// SetUser changes the log level to User, which allows all User events to be
-// logged, and ignores Dev and Admin level events.
-func (b *Logger) SetUser() *Logger {
-	atomic.StoreUint32((*uint32)(&b.level), uint32(User))
+// SetInfo changes the log level to Info, which causes all Debug and Verbose
+// events to be ignored, and all Info, Warning, and Error events to be logged.
+func (b *Logger) SetInfo() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(Info))
 	return b
 }
 
-// Dev is used to inject an event considered interesting for developers into the
-// log stream. Note the logger must have been set to the Dev log level for this
-// event to be logged.
-func (b *Logger) Dev(format string, args ...interface{}) error {
-	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Dev {
+// SetWarning changes the log level to Warning, which causes all Debug, Verbose,
+// and Info events to be ignored, and all Warning, and Error events to be
+// logged.
+func (b *Logger) SetWarning() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(Warning))
+	return b
+}
+
+// SetError changes the log level to Error, which causes all Debug, Verbose,
+// Info, and Warning events to be ignored, and all Error events to be logged.
+func (b *Logger) SetError() *Logger {
+	atomic.StoreUint32((*uint32)(&b.level), uint32(Error))
+	return b
+}
+
+// Debug is used to inject a Debug event into the logs.
+func (b *Logger) Debug(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Debug {
 		return nil
 	}
 	var prefix []string
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Dev | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Debug | b.tracer})
 }
 
-// Admin is used to inject an event considered interesting for administrators
-// into the log stream. Note the logger must have been set to the Dev or Admin
-// level for this event to be logged.
-func (b *Logger) Admin(format string, args ...interface{}) error {
-	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Admin {
+// Verbose is used to inject a Verbose event into the logs.
+func (b *Logger) Verbose(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Verbose {
 		return nil
 	}
 	var prefix []string
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Admin | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Verbose | b.tracer})
 }
 
-// User is used to inject an event considered interesting for users into the log
-// stream. The created event will be logged regardless of the log level of the
-// logger, as User events are considered the highest priority events.
-func (b *Logger) User(format string, args ...interface{}) error {
+// Info is used to inject a Info event into the logs.
+func (b *Logger) Info(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Info {
+		return nil
+	}
 	var prefix []string
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: User | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Info | b.tracer})
+}
+
+// Warning is used to inject a Warning event into the logs.
+func (b *Logger) Warning(format string, args ...interface{}) error {
+	if Level(atomic.LoadUint32((*uint32)(&b.level))) > Warning {
+		return nil
+	}
+	var prefix []string
+	if b.prefix != "" {
+		prefix = []string{b.prefix}
+	}
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Warning | b.tracer})
+}
+
+// Error is used to inject a Error event into the logs.
+func (b *Logger) Error(format string, args ...interface{}) error {
+	var prefix []string
+	if b.prefix != "" {
+		prefix = []string{b.prefix}
+	}
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Error | b.tracer})
 }
 
 // compileFormat converts the format string into a slice of functions to invoke
-// when creating a log line.  It's implemented as a state machine that
-// alternates between 2 states: consuming runes to create a constant string to
-// emit, and consuming runes to create a token that is intended to match one of
-// the pre-defined format specifier tokens, or an undefined format specifier
-// token that begins with "http-".
+// when creating a log line.
 func compileFormat(format string) ([]func(*event, *[]byte), bool, error) {
+	// Implemented as a state machine that alternates between 2 states:
+	// consuming runes to create a constant string to emit, and consuming runes
+	// to create a token that is intended to match one of the pre-defined format
+	// specifier tokens, or an undefined format specifier token that begins with
+	// "http-".
+
 	// build slice of emitter functions, each will emit the requested
 	// information
 	var emitters []func(*event, *[]byte)

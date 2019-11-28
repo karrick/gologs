@@ -13,11 +13,11 @@ func ExampleLogger() {
 	if err != nil {
 		panic(err)
 	}
-	log.SetAdmin()
-	log.Admin("Starting program")
-	log.Dev("something important to developers...")
+	log.SetVerbose()
+	log.Verbose("Starting program")
+	log.Debug("something important to developers...")
 
-	a := &Alpha{Log: NewBranchWithPrefix(log, "[ALPHA] ").SetAdmin()}
+	a := &Alpha{Log: NewBranchWithPrefix(log, "[ALPHA] ").SetVerbose()}
 	a.run([]string{"one", "@two", "three", "@four"})
 
 	// Output:
@@ -33,7 +33,7 @@ type Alpha struct {
 }
 
 func (a *Alpha) run(args []string) {
-	a.Log.Admin("Starting module")
+	a.Log.Verbose("Starting module")
 	for _, arg := range args {
 		// Create a request instance with its own logger.
 		request := &Request{
@@ -59,5 +59,5 @@ type Request struct {
 func (r *Request) Handle() {
 	// Anywhere in the call flow for the request, if it wants to log something,
 	// it should log to the Request's logger.
-	r.Log.Dev("handling request: %v", r.Query)
+	r.Log.Debug("handling request: %v", r.Query)
 }

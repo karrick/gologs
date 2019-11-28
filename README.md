@@ -53,17 +53,17 @@ func main() {
 
 	// Configure log level according to command line flags.
 	if *optDebug {
-		log.SetDev()
+		log.SetDebug()
 	} else if *optVerbose {
-		log.SetAdmin()
+		log.SetVerbose()
 	} else {
-		log.SetUser()
+		log.SetInfo()
 	}
 
 	for _, arg := range flag.Args() {
-		log.Admin("handling arg: %q", arg)
+		log.Verbose("handling arg: %q", arg)
 		if err := printSize(arg); err != nil {
-			log.User("%s", err)
+			log.Info("%s", err)
 		}
 	}
 }
@@ -73,7 +73,7 @@ func printSize(pathname string) error {
 	if err != nil {
 		return err
 	}
-	log.Dev("file stat: %v", stat)
+	log.Debug("file stat: %v", stat)
 
 	if (stat.Mode() & os.ModeType) == 0 {
 		fmt.Printf("%s is %d bytes", pathname, stat.Size())
@@ -103,108 +103,52 @@ evaluate the template string for each event to be logged.
     if err != nil {
         panic(err)
     }
-    log.User("started program: v%s", ProgramVersion) // "2006/01/02 15:04:05 started program: v3.14"
+    log.Info("started program: v%s", ProgramVersion) // "2006/01/02 15:04:05 started program: v3.14"
 ```
 
-### Think in Terms of Event Audience Rather Than Event Type
-
-When writing software, much thought goes into choosing which level to
-emit logs at for various events. Is this a debug level event? Or
-verbose? What about the difference between warning and error?
-
-I'd like to advocate a slightly different focus. This library
-advocates focusing on the audience of each particular log event rather
-than what type of event is being logged. There are three audiences for
-any log event: the user running the program; the administrator running
-this program; and the developers working on the program.
-
-One of the tennants of The UNIX Philosophy is to _Avoid Unnecessary
-output_. When a program can do a task quickly, just do it, and emit
-any requested output. The UNIX `rm foo` command does not need to say,
-"foo deleted", but it should say why the file system entry was not
-deleted when it cannot delete it. This is what User mode logging is
-for. When the user must intervene because the command did not do what
-it was told to do, emit a message as to why.
-
-In addition to the messages a regular user might want to know about,
-an administrator also wants to get a bit more information about what
-the program is doing. An administrator might want to know when the
-program started, if it's a service, what signals it received, when it
-decides to re-read its configuration. When a service upon which it
-depends failed and it had to resend a query. There are numerous
-examples of recoverable errors, and non error events that an
-administrator would want to know about.
-
-In addition to everything a user and an administrator want to see, a
-developer also wants to know the logic path a program follows as it
-processes data. For instance, they want to see what a request looks
-like when the request should work but is failing for some reason.
-
-The log levels are designed to help developers to think about the
-audience of the logged event, and phrase the wording accordingly. In
-contrast with most logging libraries, this does not map concepts such
-as WARNING or ERROR messages into levels. There are errors only a
-developer would want to see, errors that an administrator would want
-to see, and errors that all users should see. It is perfectly
-reasonable for a particular event to be an error, but intended for the
-developer's attention.
+### Log Levels
 
 Like most logging libraries, the basic logger provides methods to
 change its log level, controling which events get logged and which get
-ignored. Rembember this library exposes three log levels. Rather than
-thinking in terms of what you are logging, with this library the
-developer is thinking about who is looking at the logs. The person
-running the program specifies what they would like to see. When
-deciding what level to emit an event as, ask yourself if an
-administrator would ever care about that event. If not, make it a Dev
-event. Or ask if a user would ever care about that event. If not, make
-it an Admin event.
+ignored.
 
 ```Go
-    log.SetAdmin()
-    log.User("this event gets logged")
-    log.Admin("and so does this event")
-    log.Dev("but this event gets ignored")
+    log.SetVerbose()
+    log.Info("this event gets logged")
+    log.Verbose("and so does this event")
+    log.Debug("but this event gets ignored")
 
-    log.SetLevel(gologs.Dev)
-    log.Dev("this event does get logged")
+    log.SetLevel(gologs.Debug)
+    log.Debug("this event does get logged")
 ```
+
+When a logger is in Error mode, only Error events are logged. When a
+logger is in Warning mode, only Error and Warning events are
+logged. When a logger is in Info mode, only Error, Warning, and Info
+events are logged. When a logger is in Verbose mode, only Error,
+Warning, Info, and Verbose events are logged. When a logger is in
+Debug mode, all events are logged.
+
+Note the logger mode for a newly created Logger is Warning, which I
+feel is in keeping with the UNIX philosophy to _Avoid unnecessary
+output_. Simple command line programs will not need to set the log
+level to prevent spewing too many events. While service application
+developers will need to spend a few minutes to build in the ability to
+configure the log level based on their service needs.
 
 Perhaps more idiomatic of a command line program log configuration:
 
 ```Go
 	if *optDebug {
-		log.SetDev()
+		log.SetDebug()
 	} else if *optVerbose {
-		log.SetAdmin()
+		log.SetVerbose()
+	} else if *optQuiet {
+		log.SetError()
 	} else {
-		log.SetUser()
+		log.SetInfo()
 	}
 ```
-
-
-```Go
-    log.Dev("ERROR: formatting loop post condition violated: %d > %d", foo, bar)
-```
-
-Likewise is is perfectly reasonable for a particular event to be
-addressed to a program administrator:
-
-```Go
-    log.Admin("WARNING: config threshold too low; using default %d: %d < %d", default, value, threshold)
-```
-
-When a logger has been configured for User mode, only User events are
-logged. When a logger has been configured for Admin mode, only Admin
-and User events are logged. When a logger has been configured for Dev
-move, all Dev, Admin, and User events are logged.
-
-Note the logger mode for a newly created Logger is User, which I feel
-is in keeping with the UNIX philosophy to _Avoid unnecessary
-output_. Simple command line programs will not need to set the log
-level to prevent spewing too many events. While service application
-developers will need to spend a few minutes to build in the ability to
-configure the log level based on their service needs.
 
 ### A Tree of Logs with Multiple Branches
 
@@ -245,10 +189,10 @@ each branch can have a particular string prefix provided that will
 prefix the logged events.
 
 This allows each branch to have an independently controlled log level,
-and the program can set one logger to run at `Dev` mode, while the
-other branches run at `Admin`, or `User` mode. These log levels are
-also safe to asynchronously modify while other threads are actively
-logging events to them.
+and the program can set one logger to run at `Debug` mode, while the
+other branches run at different levels. These log levels are also safe
+to asynchronously modify while other threads are actively logging
+events to them.
 
 ```Go
     // Foo is a module of the program with its own logger.
@@ -340,7 +284,7 @@ underlying io.Writer.
     }
 
     func (r *Request) Process() error {
-        r.log.Dev("beginning processing of request: %v", r)
+        r.log.Debug("beginning processing of request: %v", r)
         // ...
     }
 ```
@@ -358,31 +302,31 @@ which all events should be logged.
 Here's an example of what Tracer Loggers are trying to eliminate:
 
 ```Go
-    // Example of desired behavior without tracer logic. Each log line becomes
-    // a conditional.
+    // Example of desired behavior without tracer logic. Each log line
+    // becomes a conditional.
     func (r *Request) Handler() {
         // It is inconvenient to branch log events each place you want to
         // emit a log event.
         if r.isSpecial {
             r.Log.Trace("handling request: %v", r)
         } else {
-            r.Log.Dev("handling request: %v", r)
+            r.Log.Debug("handling request: %v", r)
         }
 
         // Do some work, then need to log more:
         if r.isSpecial {
             r.Log.Trace("request.Cycles: %d", r.Cycles)
         } else {
-            r.Log.Dev("request.Cycles: %d", r.Cycles)
+            r.Log.Debug("request.Cycles: %d", r.Cycles)
         }
     }
 ```
 
 I propose something better, where the developer does not need to
 include conditional statements to branch based on whether the log
-should receive Tracer status or Admin status for each log event. Yet,
-when Tracer status, still get written to the log when something
-requires it.
+should receive Tracer status or Verbose status for each log
+event. Yet, when Tracer status, still get written to the log when
+something requires it.
 
 ```Go
     func NewRequest(log *gologs.Logger, key string) (*Request, error) {
@@ -394,9 +338,9 @@ requires it.
     }
 
     func (r *Request) Handler() {
-        r.Log.Dev("handling request: %v", r)
+        r.Log.Debug("handling request: %v", r)
 
         // Do some work, then need to log more:
-        r.Log.Dev("request.Cycles: %d", r.Cycles)
+        r.Log.Debug("request.Cycles: %d", r.Cycles)
     }
 ```
