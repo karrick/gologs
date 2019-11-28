@@ -1,6 +1,15 @@
 # gologs
 
-Goals:
+## Why
+
+Why yet another logging library?
+
+1. Create a log, split it into branches, give each branch different
+   log prefixes, and set each branch to independent log level.
+
+1. More intuitive and useful tracer logging.
+
+## Goals
 
 1. This should work within the Go ecosystem. Specifically, it should
    emit logs to any io.Writer.
@@ -21,7 +30,7 @@ Goals:
 
 [![GoDoc](https://godoc.org/github.com/karrick/gologs?status.svg)](https://godoc.org/github.com/karrick/gologs)
 
-## Example
+## Usage Example
 
 ```Go
 package main
