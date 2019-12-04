@@ -63,7 +63,7 @@ func (l Level) String() string {
 		return "ERROR"
 	}
 	// NOT REACHED
-	panic(fmt.Sprintf("invalid log level: %v", uint32(l)))
+	panic(fmt.Sprintf("invalid log level: %d", uint32(l)))
 }
 
 // event instances are created by loggers and flow through the log tree from the
@@ -76,6 +76,7 @@ type event struct {
 	when   time.Time
 	format string
 	level  Level
+	tracer bool
 }
 
 // base is at the bottom of the logger tree, and formats the event to a byte
@@ -138,7 +139,7 @@ type Logger struct {
 	prefix string // prefix is an option string, that when not empty, will prefix events
 	parent logger // parent is the logger this branch sends events to
 	level  Level  // level is the independent log level controls for this branch
-	tracer Level  // tracer is an optional value that is boolean ORd with an event, so events created by this branch will pass through possible log level controls below.
+	tracer bool   // tracer is value used to initialize new events created by this Logger
 }
 
 // New returns a new Logger instance that emits logged events to w after
@@ -205,11 +206,11 @@ func NewBranchWithPrefix(parent *Logger, prefix string) *Logger {
 //     tl := NewTracer(logger, "[QUERY-1234] ") // make a trace logger
 //     tl.Debug("start handling: %f", 3.14)       // [QUERY-1234] start handling: 3.14
 func NewTracer(parent *Logger, prefix string) *Logger {
-	return &Logger{parent: parent, prefix: prefix, tracer: Error + 1}
+	return &Logger{parent: parent, prefix: prefix, tracer: true}
 }
 
 func (b *Logger) log(e *event) error {
-	if b.tracer == 0 && Level(atomic.LoadUint32((*uint32)(&b.level))) > e.level {
+	if !e.tracer && Level(atomic.LoadUint32((*uint32)(&b.level))) > e.level {
 		return nil
 	}
 	if b.prefix != "" {
@@ -270,7 +271,7 @@ func (b *Logger) Debug(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Debug | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Debug})
 }
 
 // Verbose is used to inject a Verbose event into the logs.
@@ -282,7 +283,7 @@ func (b *Logger) Verbose(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Verbose | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Verbose})
 }
 
 // Info is used to inject a Info event into the logs.
@@ -294,7 +295,7 @@ func (b *Logger) Info(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Info | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Info})
 }
 
 // Warning is used to inject a Warning event into the logs.
@@ -306,7 +307,7 @@ func (b *Logger) Warning(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Warning | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Warning})
 }
 
 // Error is used to inject a Error event into the logs.
@@ -315,7 +316,7 @@ func (b *Logger) Error(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, level: Error | b.tracer})
+	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Error})
 }
 
 // compileFormat converts the format string into a slice of functions to invoke
