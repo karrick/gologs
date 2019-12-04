@@ -322,61 +322,52 @@ func (b *Logger) Error(format string, args ...interface{}) error {
 // compileFormat converts the format string into a slice of functions to invoke
 // when creating a log line.
 func compileFormat(format string) ([]func(*event, *[]byte), bool, error) {
-	// Implemented as a state machine that alternates between 2 states:
-	// consuming runes to create a constant string to emit, and consuming runes
-	// to create a token that is intended to match one of the pre-defined format
-	// specifier tokens, or an undefined format specifier token that begins with
-	// "http-".
-
 	// build slice of emitter functions, each will emit the requested
 	// information
 	var emitters []func(*event, *[]byte)
 
-	// state machine alternating between two states: either capturing runes for
-	// the next constant buffer, or capturing runes for the next token
+	// Implemented as a state machine that alternates between 2 states: either
+	// capturing runes for the next constant buffer, or capturing runes for the
+	// next token
 	var buf, token []byte
-	var capturingTokenIndex int
-	var capturingToken bool  // false, because start off capturing buffer runes
-	var nextRuneEscaped bool // true when next rune has been escaped
-	var isFinalNewlineNeeded bool
-	var isTimeRequired bool // true when any of the formatters require system time
+	var indexOpenCurlyBrace int  // index of most recent open curly brace
+	var isCapturingToken bool    // true after open curly brace until next close curly brace
+	var isPrevRuneBackslash bool // true when previous rune was backslash
+	var isPrevRuneNewline bool   // true when rune most recently read is newline
+	var isTimeRequired bool      // true when any of the formatters require system time
 
 	for ri, rune := range format {
-		isFinalNewlineNeeded = rune != '\n'
-		if nextRuneEscaped {
-			// when this rune has been escaped, then just write it out to
-			// whichever buffer we're collecting to right now
-			if capturingToken {
+		isPrevRuneNewline = rune == '\n'
+
+		if isPrevRuneBackslash {
+			// When this rune has been escaped, then just write it out to
+			// whichever buffer we're collecting to right now.
+			if isCapturingToken {
 				appendRune(&token, rune)
 			} else {
 				appendRune(&buf, rune)
 			}
-			nextRuneEscaped = false
+			isPrevRuneBackslash = false
 			continue
 		}
-		if rune == '\\' {
-			// Format specifies that next rune ought to be escaped.  Handy when
-			// extra curly braces are desired in the log line format.
-			nextRuneEscaped = true
-			continue
-		}
-		if rune == '{' {
-			if capturingToken {
-				return nil, false, fmt.Errorf("cannot compile log format with embedded curly braces; runes %d and %d", capturingTokenIndex, ri)
+
+		switch rune {
+		case '\\':
+			isPrevRuneBackslash = true
+		case '{':
+			if isCapturingToken {
+				return nil, false, fmt.Errorf("cannot compile log format with embedded curly braces; runes %d and %d", indexOpenCurlyBrace, ri)
 			}
-			// Stop capturing buf, and begin capturing token.  NOTE: Because I
-			// did not want to allow Base Logger creation to fail, undefined
-			// behavior if open curly brace when previous open curly brace has
-			// not yet been closed.
+			// Stop capturing buf, and begin capturing token.
 			emitters = append(emitters, makeStringEmitter(string(buf)))
 			buf = buf[:0]
-			capturingToken = true
-			capturingTokenIndex = ri
-		} else if rune == '}' {
-			if !capturingToken {
+			isCapturingToken = true
+			indexOpenCurlyBrace = ri
+		case '}':
+			if !isCapturingToken {
 				return nil, false, fmt.Errorf("cannot compile log format with unmatched closing curly braces; rune %d", ri)
 			}
-			// Stop capturing token, and begin capturing buffer.
+			// Stop capturing token, and begin capturing buf.
 			switch tok := string(token); tok {
 			case "epoch":
 				isTimeRequired = true
@@ -397,33 +388,34 @@ func compileFormat(format string) ([]func(*event, *[]byte), bool, error) {
 			default:
 				// ??? Not sure how I feel about the below API.
 				if strings.HasPrefix(tok, "localtime=") {
-					isTimeRequired = true
 					emitters = append(emitters, makeLocalTimestampEmitter(tok[10:]))
 				} else if strings.HasPrefix(tok, "utctime=") {
-					isTimeRequired = true
 					emitters = append(emitters, makeUTCTimestampEmitter(tok[8:]))
 				} else {
 					return nil, false, fmt.Errorf("cannot compile log format with unknown formatting verb %q", token)
 				}
+				isTimeRequired = true
 			}
 			token = token[:0]
-			capturingToken = false
-		} else {
-			// append to either token or buffer
-			if capturingToken {
+			isCapturingToken = false
+		default:
+			// Append rune to either token or buf.
+			if isCapturingToken {
 				appendRune(&token, rune)
 			} else {
 				appendRune(&buf, rune)
 			}
 		}
 	}
-	if capturingToken {
-		return nil, false, fmt.Errorf("cannot compile log format with unmatched opening curly braces; rune %d", capturingTokenIndex)
+
+	if isCapturingToken {
+		return nil, false, fmt.Errorf("cannot compile log format with unmatched opening curly braces; rune %d", indexOpenCurlyBrace)
 	}
 
-	if isFinalNewlineNeeded {
-		buf = append(buf, '\n') // each log line terminated by newline byte
+	if !isPrevRuneNewline {
+		buf = append(buf, '\n') // terminate each log line with newline byte
 	}
+
 	if len(buf) > 0 {
 		emitters = append(emitters, makeStringEmitter(string(buf)))
 	}
