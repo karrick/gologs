@@ -23,7 +23,7 @@ const DefaultCommandFormat = "{program}: {message}"
 // logs will eventually be written to. The default timestamp format is the same
 // as what the standard library logs times as, but different timestamp formats
 // are readily available, and the timestamp format is also customizable.
-const DefaultServiceFormat = "{timestamp} {message}"
+const DefaultServiceFormat = "{timestamp} [{level}] {message}"
 
 // Level type defines one of several possible log levels.
 type Level uint32
