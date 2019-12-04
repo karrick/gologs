@@ -113,12 +113,35 @@ func (b *base) log(e *event) error {
 	for _, formatter := range b.formatters {
 		formatter(e, &buf)
 	}
+	buf = singleNewline(buf)
 
 	// Serialize access to the underlying io.Writer.
 	b.m.Lock()
 	_, err := b.w.Write(buf)
 	b.m.Unlock()
 	return err
+}
+
+func singleNewline(buf []byte) []byte {
+	l := len(buf)
+	if l == 0 {
+		return []byte{'\n'}
+	}
+
+	// While this is O(length s), it stops as soon as it finds the first non
+	// newline character in the string starting from the right hand side of the
+	// input string. Generally this only scans one or two characters and
+	// returns.
+	for i := l - 1; i >= 0; i-- {
+		if buf[i] != '\n' {
+			if i+1 < l && buf[i+1] == '\n' {
+				return buf[:i+2]
+			}
+			return append(buf[:i+1], '\n')
+		}
+	}
+
+	return buf[:1] // all newline characters, so just return the first one
 }
 
 type logger interface {

@@ -6,6 +6,61 @@ import (
 )
 
 func TestLogger(t *testing.T) {
+	t.Run("single newline", func(t *testing.T) {
+		t.Run("without newline in log format", func(t *testing.T) {
+			t.Run("without newline in event format", func(t *testing.T) {
+				bb := new(bytes.Buffer)
+				log, err := New(bb, "{message}")
+				ensureError(t, err)
+
+				err = log.Error("test")
+				ensureError(t, err)
+
+				if got, want := string(bb.Bytes()), "test\n"; got != want {
+					t.Errorf("GOT: %q; WANT: %q", got, want)
+				}
+			})
+			t.Run("with newline in event format", func(t *testing.T) {
+				bb := new(bytes.Buffer)
+				log, err := New(bb, "{message}")
+				ensureError(t, err)
+
+				err = log.Error("test\n")
+				ensureError(t, err)
+
+				if got, want := string(bb.Bytes()), "test\n"; got != want {
+					t.Errorf("GOT: %q; WANT: %q", got, want)
+				}
+			})
+		})
+		t.Run("with newline in log format", func(t *testing.T) {
+			t.Run("without newline in event format", func(t *testing.T) {
+				bb := new(bytes.Buffer)
+				log, err := New(bb, "{message}\n")
+				ensureError(t, err)
+
+				err = log.Error("test")
+				ensureError(t, err)
+
+				if got, want := string(bb.Bytes()), "test\n"; got != want {
+					t.Errorf("GOT: %q; WANT: %q", got, want)
+				}
+			})
+			t.Run("with newline in event format", func(t *testing.T) {
+				bb := new(bytes.Buffer)
+				log, err := New(bb, "{message}\n")
+				ensureError(t, err)
+
+				err = log.Error("test\n")
+				ensureError(t, err)
+
+				if got, want := string(bb.Bytes()), "test\n"; got != want {
+					t.Errorf("GOT: %q; WANT: %q", got, want)
+				}
+			})
+		})
+	})
+
 	t.Run("is time required", func(t *testing.T) {
 		t.Run("is not required", func(t *testing.T) {
 			_, isTimeRequired, err := compileFormat("{message}")
@@ -60,9 +115,7 @@ func TestLogger(t *testing.T) {
 			t.Helper()
 			bb := new(bytes.Buffer)
 			log, err := New(bb, "{message}")
-			if err != nil {
-				t.Fatal(err)
-			}
+			ensureError(t, err)
 			callback(log)
 			if got := string(bb.Bytes()); got != want {
 				t.Errorf("GOT: %q; WANT: %q", got, want)
@@ -112,9 +165,7 @@ func TestLogger(t *testing.T) {
 			t.Helper()
 			bb := new(bytes.Buffer)
 			log, err := New(bb, "[A] {message}")
-			if err != nil {
-				t.Fatal(err)
-			}
+			ensureError(t, err)
 			callback(log)
 			if got := string(bb.Bytes()); got != want {
 				t.Errorf("GOT: %q; WANT: %q", got, want)
@@ -130,9 +181,7 @@ func TestLogger(t *testing.T) {
 			bb := new(bytes.Buffer)
 
 			log, err := New(bb, "[BASE] {message}")
-			if err != nil {
-				t.Fatal(err)
-			}
+			ensureError(t, err)
 
 			tracer := NewTracer(NewTracer(log, "[TRACER1] "), "[TRACER2] ")
 
@@ -146,9 +195,7 @@ func TestLogger(t *testing.T) {
 			bb := new(bytes.Buffer)
 
 			log, err := New(bb, "[BASE] {message}")
-			if err != nil {
-				t.Fatal(err)
-			}
+			ensureError(t, err)
 
 			tracer := NewTracer(log.SetError(), "[TRACER] ")
 
