@@ -117,8 +117,8 @@ func (b *base) log(e *event) error {
 
 	// Serialize access to the underlying io.Writer.
 	b.m.Lock()
+	defer b.m.Unlock()
 	_, err := b.w.Write(buf)
-	b.m.Unlock()
 	return err
 }
 

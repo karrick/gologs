@@ -2,6 +2,7 @@ package gologs
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -205,4 +206,42 @@ func TestLogger(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("does not hold lock when writer panics", func(t *testing.T) {
+		bb := new(bytes.Buffer)
+		pw := &panicyWriter{w: bb}
+
+		log, err := New(pw, "{message}")
+		ensureError(t, err)
+
+		log.SetDebug()
+
+		log.Info("message 1")
+
+		ensurePanic(t, "boom!", func() {
+			pw.isTriggered = true
+			log.Info("message 2")
+		})
+
+		pw.isTriggered = false
+		log.Info("message 3")
+
+		expected := "message 1\nmessage 2\nmessage 3\n"
+		if got, want := string(bb.Bytes()), expected; got != want {
+			t.Errorf("GOT: %q; WANT: %q", got, want)
+		}
+	})
+}
+
+type panicyWriter struct {
+	w           io.Writer
+	isTriggered bool
+}
+
+func (pw *panicyWriter) Write(buf []byte) (int, error) {
+	n, err := pw.w.Write(buf)
+	if pw.isTriggered {
+		panic("boom!")
+	}
+	return n, err
 }
