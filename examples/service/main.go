@@ -41,7 +41,7 @@ func main() {
 	log.Verbose("Starting service; debug: %v; verbose: %v", *optDebug, *optVerbose)
 	log.Debug("something important to developers...")
 
-	a := &Alpha{Log: gologs.NewBranchWithPrefix(log, "[ALPHA] ").SetVerbose()}
+	a := &Alpha{Log: log.NewBranchWithPrefix("[ALPHA] ").SetVerbose()}
 	if err := a.run(os.Stdin); err != nil {
 		log.Info("%s", err)
 	}
@@ -66,7 +66,7 @@ func (a *Alpha) run(r io.Reader) error {
 		if strings.HasPrefix(request.Query, "@") {
 			// For demonstration purposes, let's arbitrarily cause some of the
 			// events to be logged with tracers.
-			request.Log = gologs.NewTracer(request.Log, fmt.Sprintf("[REQUEST %s] ", request.Query))
+			request.Log = request.Log.NewTracer(fmt.Sprintf("[REQUEST %s] ", request.Query))
 		}
 		request.Handle()
 	}

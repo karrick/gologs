@@ -225,12 +225,12 @@ events to them.
             // NOTE: the branch prefix has a trailing space in order to
             // format nicely. You may prefer "FOO: " as your prefix, or
             // even just "FOO:".
-            log: gologs.NewBranchWithPrefix(log, "[FOO] "),
+            log: log.NewBranchWithPrefix("[FOO] "),
         }
         go foo.run()
 
         bar := &Bar{
-            log: gologs.NewBranchWithPrefix(log, "[BAR] "),
+            log: log.NewBranchWithPrefix("[BAR] "),
         }
         go bar.run()
     }
@@ -248,7 +248,7 @@ the developer can independently control the log level of that
 particular branch of logs.
 
 ```Go
-    log2 := gologs.NewBranch(log)
+    log2 := log.NewBranch()
 ```
 
 ### Tracer Logging
@@ -290,7 +290,7 @@ underlying io.Writer.
             query: query,
         }
         if strings.HasSuffix("*") {
-            r.log = gologs.NewTracer(r.log, fmt.Sprintf"[REQUEST %q] ", query)
+            r.log = r.log.NewTracer(fmt.Sprintf("[REQUEST %q] ", query))
         }
         // ...
     }
@@ -344,7 +344,7 @@ something requires it.
     func NewRequest(log *gologs.Logger, key string) (*Request, error) {
         r := &R{Log: log, Key: key}
         if r.isSpecial {
-            r.Log = gologs.NewTracer(r.Log, fmt.Sprintf("[REQUEST %s] ", r.Key))
+            r.Log = r.Log.NewTracer(fmt.Sprintf("[REQUEST %s] ", r.Key))
         }
         return r, nil
     }

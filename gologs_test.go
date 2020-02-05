@@ -173,8 +173,8 @@ func TestLogger(t *testing.T) {
 			}
 		}
 
-		check(t, "[A] [B] 3.14\n", func(l *Logger) { NewBranchWithPrefix(l, "[B] ").Error("%v", 3.14) })
-		check(t, "[A] [B] [C] 3.14\n", func(l *Logger) { NewBranchWithPrefix(NewBranchWithPrefix(l, "[B] "), "[C] ").Error("%v", 3.14) })
+		check(t, "[A] [B] 3.14\n", func(l *Logger) { l.NewBranchWithPrefix("[B] ").Error("%v", 3.14) })
+		check(t, "[A] [B] [C] 3.14\n", func(l *Logger) { l.NewBranchWithPrefix("[B] ").NewBranchWithPrefix("[C] ").Error("%v", 3.14) })
 	})
 
 	t.Run("tracer", func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestLogger(t *testing.T) {
 			log, err := New(bb, "[BASE] {message}")
 			ensureError(t, err)
 
-			tracer := NewTracer(NewTracer(log, "[TRACER1] "), "[TRACER2] ")
+			tracer := log.NewTracer("[TRACER1] ").NewTracer("[TRACER2] ")
 
 			tracer.Verbose("%v %v %v", 3.14, "hello", struct{}{})
 			if got, want := string(bb.Bytes()), "[BASE] [TRACER1] [TRACER2] 3.14 hello {}\n"; got != want {
@@ -198,7 +198,7 @@ func TestLogger(t *testing.T) {
 			log, err := New(bb, "[BASE] {message}")
 			ensureError(t, err)
 
-			tracer := NewTracer(log.SetError(), "[TRACER] ")
+			tracer := log.SetError().NewTracer("[TRACER] ")
 
 			tracer.Verbose("%v %v %v", 3.14, "hello", struct{}{})
 			if got, want := string(bb.Bytes()), "[BASE] [TRACER] 3.14 hello {}\n"; got != want {

@@ -17,7 +17,7 @@ func ExampleLogger() {
 	log.Verbose("Starting program")
 	log.Debug("something important to developers...")
 
-	a := &Alpha{Log: NewBranchWithPrefix(log, "[ALPHA] ").SetVerbose()}
+	a := &Alpha{Log: log.NewBranchWithPrefix("[ALPHA] ").SetVerbose()}
 	a.run([]string{"one", "@two", "three", "@four"})
 
 	// Output:
@@ -43,7 +43,7 @@ func (a *Alpha) run(args []string) {
 		if strings.HasPrefix(arg, "@") {
 			// For demonstration purposes, let's arbitrarily cause some of the
 			// events to be logged with tracers.
-			request.Log = NewTracer(request.Log, fmt.Sprintf("[arg=%s] ", arg))
+			request.Log = request.Log.NewTracer(fmt.Sprintf("[arg=%s] ", arg))
 		}
 		request.Handle()
 	}
