@@ -53,7 +53,7 @@ func printSize(pathname string) error {
 	log.Debug("file stat: %v", stat)
 
 	if (stat.Mode() & os.ModeType) == 0 {
-		fmt.Printf("%s is %d bytes", pathname, stat.Size())
+		fmt.Printf("%s is %d bytes\n", pathname, stat.Size())
 	}
 
 	return nil
