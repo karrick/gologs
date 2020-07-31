@@ -90,7 +90,7 @@ type base struct {
 	isTimeRequired bool
 }
 
-func (b *base) log(e *event) error {
+func (b *base) write(e *event) (int, error) {
 	// ??? *If* want to sacrifice a bit of speed, might consider using a
 	// pre-allocated byte slice to format the output. The pre-allocated slice
 	// can be protected with the lock already being used to serialize output, or
@@ -118,8 +118,7 @@ func (b *base) log(e *event) error {
 	// Serialize access to the underlying io.Writer.
 	b.m.Lock()
 	defer b.m.Unlock()
-	_, err := b.w.Write(buf)
-	return err
+	return b.w.Write(buf)
 }
 
 func singleNewline(buf []byte) []byte {
@@ -145,7 +144,7 @@ func singleNewline(buf []byte) []byte {
 }
 
 type logger interface {
-	log(*event) error
+	write(*event) (int, error)
 }
 
 // Logger provides methods to create events to be logged. Logger instances are
@@ -163,6 +162,15 @@ type Logger struct {
 	parent logger // parent is the logger this branch sends events to
 	level  Level  // level is the independent log level controls for this branch
 	tracer bool   // tracer is value used to initialize new events created by this Logger
+}
+
+func (l *Logger) Write(p []byte) (n int, err error) {
+	// Serialize access to the underlying io.Writer.
+	b.m.Lock()
+	defer b.m.Unlock()
+	return b.w.Write(buf)
+
+	return l.parent.write(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Error})
 }
 
 // New returns a new Logger instance that emits logged events to w after
@@ -232,14 +240,14 @@ func (parent *Logger) NewTracer(format string, args ...interface{}) *Logger {
 	return &Logger{parent: parent, prefix: fmt.Sprintf(format, args...), tracer: true}
 }
 
-func (b *Logger) log(e *event) error {
+func (b *Logger) write(e *event) (int, error) {
 	if !e.tracer && Level(atomic.LoadUint32((*uint32)(&b.level))) > e.level {
-		return nil
+		return 0, nil
 	}
 	if b.prefix != "" {
 		e.prefix = append([]string{b.prefix}, e.prefix...)
 	}
-	return b.parent.log(e)
+	return b.parent.write(e)
 }
 
 // SetLevel allows changing the log level. Events must have the same log level
@@ -294,7 +302,8 @@ func (b *Logger) Debug(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Debug})
+	_, err := b.parent.write(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Debug})
+	return err
 }
 
 // Verbose is used to inject a Verbose event into the logs.
@@ -306,7 +315,8 @@ func (b *Logger) Verbose(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Verbose})
+	_, err := b.parent.write(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Verbose})
+	return err
 }
 
 // Info is used to inject a Info event into the logs.
@@ -318,7 +328,8 @@ func (b *Logger) Info(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Info})
+	_, err := b.parent.write(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Info})
+	return err
 }
 
 // Warning is used to inject a Warning event into the logs.
@@ -330,7 +341,8 @@ func (b *Logger) Warning(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Warning})
+	_, err := b.parent.write(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Warning})
+	return err
 }
 
 // Error is used to inject a Error event into the logs.
@@ -339,7 +351,8 @@ func (b *Logger) Error(format string, args ...interface{}) error {
 	if b.prefix != "" {
 		prefix = []string{b.prefix}
 	}
-	return b.parent.log(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Error})
+	_, err := b.parent.write(&event{format: format, args: args, prefix: prefix, tracer: b.tracer, level: Error})
+	return err
 }
 
 // compileFormat converts the format string into a slice of functions to invoke
