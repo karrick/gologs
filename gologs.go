@@ -219,8 +219,8 @@ func (parent *Logger) NewBranch() *Logger {
 // base. When a parent Logger has a more restrictive log level than a child
 // Logger, the event might pass through from a child to its parent, but be
 // filtered out once they arrive at the parent.
-func (parent *Logger) NewBranchWithPrefix(prefix string) *Logger {
-	return &Logger{parent: parent, prefix: prefix}
+func (parent *Logger) NewBranchWithPrefix(format string, args ...interface{}) *Logger {
+	return &Logger{parent: parent, prefix: fmt.Sprintf(format, args...)}
 }
 
 // NewTracer returns a new Logger instance that sets the tracer bit for events
@@ -228,8 +228,8 @@ func (parent *Logger) NewBranchWithPrefix(prefix string) *Logger {
 //
 //     tl := log.NewTracer("[QUERY-1234] ")  // make a trace logger
 //     tl.Debug("start handling: %f", 3.14)  // [QUERY-1234] start handling: 3.14
-func (parent *Logger) NewTracer(prefix string) *Logger {
-	return &Logger{parent: parent, prefix: prefix, tracer: true}
+func (parent *Logger) NewTracer(format string, args ...interface{}) *Logger {
+	return &Logger{parent: parent, prefix: fmt.Sprintf(format, args...), tracer: true}
 }
 
 func (b *Logger) log(e *event) error {
