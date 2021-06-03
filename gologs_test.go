@@ -6,6 +6,24 @@ import (
 	"testing"
 )
 
+func TestSingleNewLine(t *testing.T) {
+	t.Run("no newlines", func(t *testing.T) {
+		ensureBuffer(t, singleNewline([]byte("this has no newlines")), []byte("this has no newlines\n"))
+	})
+	t.Run("one newline", func(t *testing.T) {
+		ensureBuffer(t, singleNewline([]byte("this has one newline\n")), []byte("this has one newline\n"))
+	})
+	t.Run("two newlines", func(t *testing.T) {
+		ensureBuffer(t, singleNewline([]byte("this has two newlines\n\n")), []byte("this has two newlines\n"))
+	})
+	t.Run("hidden newline", func(t *testing.T) {
+		ensureBuffer(t, singleNewline([]byte("this\nhas\nhidden\nnewlines\n\n")), []byte("this\nhas\nhidden\nnewlines\n"))
+	})
+	t.Run("all newlines", func(t *testing.T) {
+		ensureBuffer(t, singleNewline([]byte("\n\n\n\n")), []byte("\n"))
+	})
+}
+
 func TestLogger(t *testing.T) {
 	t.Run("single newline", func(t *testing.T) {
 		t.Run("without newline in log format", func(t *testing.T) {

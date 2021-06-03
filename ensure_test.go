@@ -1,10 +1,18 @@
 package gologs
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
 )
+
+func ensureBuffer(tb testing.TB, got, want []byte) {
+	tb.Helper()
+	if !bytes.Equal(got, want) {
+		tb.Errorf("GOT: %v; WANT: %v", got, want)
+	}
+}
 
 func ensureError(tb testing.TB, err error, contains ...string) {
 	tb.Helper()
