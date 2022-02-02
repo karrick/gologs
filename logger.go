@@ -385,8 +385,11 @@ func (event *Event) Msg(s string) error {
 	// Using defer here to prevent holding lock if underlying io.Writer
 	// panics.
 	defer func() {
-		event.mutex.Unlock()
+		// NOTE: There is nothing to be done to report problem to caller when
+		// cannot invoke the provided io.Writer.
+
 		event.buf = event.buf[:1] // Clear everything after initial open curly brace.
+		event.mutex.Unlock()
 	}()
 
 	if s != "" {

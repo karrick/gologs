@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func ensureBuffer(tb testing.TB, got, want []byte) {
+func ensureBytes(tb testing.TB, got, want []byte) {
 	tb.Helper()
 	if !bytes.Equal(got, want) {
-		tb.Errorf("GOT: %v; WANT: %v", got, want)
+		tb.Errorf("\nGOT:\n\t%vWANT:\n\t%v\n", string(got), string(want))
 	}
 }
 

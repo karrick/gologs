@@ -6,13 +6,6 @@ import (
 	"testing"
 )
 
-func ensureBytes(tb testing.TB, got, want []byte) {
-	tb.Helper()
-	if !bytes.Equal(got, want) {
-		tb.Errorf("\nGOT:\n\t%vWANT:\n\t%v\n", string(got), string(want))
-	}
-}
-
 func TestLogger(t *testing.T) {
 	t.Run("panic protection", func(t *testing.T) {
 		// The caller provides one or two dependencies that this structure
