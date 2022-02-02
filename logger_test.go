@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+func ensureBytes(tb testing.TB, got, want []byte) {
+	tb.Helper()
+	if !bytes.Equal(got, want) {
+		tb.Errorf("\nGOT:\n\t%vWANT:\n\t%v\n", string(got), string(want))
+	}
+}
+
 func TestLogger(t *testing.T) {
 	t.Run("should not log", func(t *testing.T) {
 		bb := new(bytes.Buffer)
@@ -20,9 +27,7 @@ func TestLogger(t *testing.T) {
 			String("eye-color", "brown").
 			Msg("should not log")
 
-		if got, want := bb.Bytes(), []byte(""); !bytes.Equal(got, want) {
-			t.Errorf("GOT: %q; WANT: %q", string(got), string(want))
-		}
+		ensureBytes(t, bb.Bytes(), nil)
 	})
 
 	t.Run("should log", func(t *testing.T) {
@@ -48,9 +53,27 @@ func TestLogger(t *testing.T) {
 
 		want := []byte("{\"time\":123456789,\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"i64\":42,\"eye-color\":\"brown\",\"message\":\"should log\"}\n")
 
-		if got := bb.Bytes(); !bytes.Equal(got, want) {
-			t.Errorf("GOT: %q; WANT: %q", string(got), string(want))
-		}
+		ensureBytes(t, bb.Bytes(), want)
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		t.Run("nil", func(t *testing.T) {
+			bb := new(bytes.Buffer)
+
+			New(bb).Warning().String("pathname", "/some/path").Err(nil).Msg("read file")
+
+			want := []byte("{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":null,\"message\":\"read file\"}\n")
+			ensureBytes(t, bb.Bytes(), want)
+		})
+
+		t.Run("non-nil", func(t *testing.T) {
+			bb := new(bytes.Buffer)
+
+			New(bb).Warning().String("pathname", "/some/path").Err(bytes.ErrTooLarge).Msg("read file")
+
+			want := []byte("{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":\"bytes.Buffer: too large\",\"message\":\"read file\"}\n")
+			ensureBytes(t, bb.Bytes(), want)
+		})
 	})
 
 	t.Run("branches", func(t *testing.T) {
@@ -70,9 +93,7 @@ func TestLogger(t *testing.T) {
 {"level":"warning","module":"child2","message":"should be logged"}
 `)
 
-			if got := bb.Bytes(); !bytes.Equal(got, want) {
-				t.Errorf("GOT:\n\t%v\nWANT:\n\t%v\n", string(got), string(want))
-			}
+			ensureBytes(t, bb.Bytes(), want)
 		})
 
 		t.Run("cascading", func(t *testing.T) {
@@ -81,9 +102,7 @@ func TestLogger(t *testing.T) {
 				bb := new(bytes.Buffer)
 				log := New(bb).NewBranchWithString("module", "signals")
 				callback(log)
-				if got := string(bb.Bytes()); got != want {
-					t.Errorf("GOT:\n\t%q\n\tWANT:\n\t%q", got, want)
-				}
+				ensureBytes(t, bb.Bytes(), []byte(want))
 			}
 
 			check(t, "{\"level\":\"error\",\"module\":\"signals\",\"float\":3.14}\n", func(l *Logger) {
@@ -108,9 +127,7 @@ func TestLogger(t *testing.T) {
 			bb := new(bytes.Buffer)
 			log := New(bb)
 			callback(log)
-			if got := string(bb.Bytes()); got != want {
-				t.Errorf("GOT: %q; WANT: %q", got, want)
-			}
+			ensureBytes(t, bb.Bytes(), []byte(want))
 		}
 
 		// default logger mode is warning
@@ -161,9 +178,7 @@ func BenchmarkLogger(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			f.Debug().Bool("happy", true).Bool("sad", false).Msg("")
-			if got, want := bb.Bytes(), []byte{}; !bytes.Equal(got, want) {
-				b.Errorf("GOT: %v; WANT: %v", string(got), string(want))
-			}
+			ensureBytes(b, bb.Bytes(), nil)
 
 			// NOTE: do not need to invoke bb.Reset() because nothing should be written.
 		}
@@ -184,9 +199,7 @@ func BenchmarkLogger(b *testing.B) {
 					String("eye-color", "brown").
 					Msg("should log")
 
-				if got := bb.Bytes(); !bytes.Equal(got, want) {
-					b.Errorf("GOT: %v; WANT: %v", string(got), string(want))
-				}
+				ensureBytes(b, bb.Bytes(), want)
 
 				bb.Reset()
 			}
@@ -207,9 +220,7 @@ func BenchmarkLogger(b *testing.B) {
 					String("eye-color", "brown").
 					Msg("with string formatting")
 
-				if got := bb.Bytes(); !bytes.Equal(got, want) {
-					b.Errorf("GOT: %v; WANT: %v", string(got), string(want))
-				}
+				ensureBytes(b, bb.Bytes(), want)
 
 				bb.Reset()
 			}

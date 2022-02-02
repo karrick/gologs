@@ -42,7 +42,7 @@ func main() {
 
 	a := &Alpha{Log: log.NewBranchWithString("module", "ALPHA").SetVerbose()}
 	if err := a.run(os.Stdin); err != nil {
-		log.Warning().Msg(err.Error())
+		log.Warning().Err(err).Msg("cannot read")
 	}
 }
 
