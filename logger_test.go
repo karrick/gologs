@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+// panicyWriter is a test structure used for this test that optionally panics.
+type panicyWriter struct {
+	w           io.Writer
+	isTriggered bool
+}
+
+func (pw *panicyWriter) Write(buf []byte) (int, error) {
+	if pw.isTriggered {
+		panic("writer-boom!")
+	}
+	return pw.w.Write(buf)
+}
+
 func TestLogger(t *testing.T) {
 	t.Run("panic protection", func(t *testing.T) {
 		// The caller provides one or two dependencies that this structure
@@ -15,7 +28,7 @@ func TestLogger(t *testing.T) {
 
 		t.Run("writer", func(t *testing.T) {
 			bb := new(bytes.Buffer)
-			pw := &panicyWriter{w: bb} // a test structure used for this test that optionally panics
+			pw := &panicyWriter{w: bb}
 			log := New(pw).SetInfo()
 
 			log.Info().Msg("message 1")
@@ -52,218 +65,326 @@ func TestLogger(t *testing.T) {
 		})
 	})
 
-	t.Run("should not log", func(t *testing.T) {
-		bb := new(bytes.Buffer)
-		f := New(bb)
-		f.SetLevel(Error)
-		f.SetTimeFormatter(TimeUnixNano)
-		f.Debug().
-			Bool("happy", true).
-			Bool("sad", false).
-			Float("usage", 42.3).
-			Format("name", "%s %s", "First", "Last").
-			Int("age", 42).
-			String("eye-color", "brown").
-			Uint("months", 123).
-			Uint64("days", 1234).
-			Msg("should not log")
+	t.Run("cases", func(t *testing.T) {
+		tests := []struct {
+			name string
+			want string
+			call func(*Logger)
+		}{
+			{
+				"level before threshold should not log",
+				"",
+				func(l *Logger) {
+					l.Verbose().
+						Bool("happy", true).
+						Bool("sad", false).
+						Float("usage", 42.3).
+						Format("name", "%s %s", "First", "Last").
+						Int("age", 42).
+						String("eye-color", "brown").
+						Uint("months", 123).
+						Uint64("days", 1234).
+						Msg("should not log")
+				},
+			},
+			{
+				"level at threshold should log",
+				"{\"time\":123456789,\"level\":\"warning\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"i64\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n",
+				func(l *Logger) {
+					// Use custom time formatter to ensure it is called, and to be able to
+					// use a specific time value for the purpose of validating the output.
+					l.SetTimeFormatter(func(buf []byte) []byte {
+						return append(buf, []byte(`"time":123456789,`)...)
+					})
 
-		ensureBytes(t, bb.Bytes(), nil)
-	})
+					l.Warning().
+						Bool("happy", true).
+						Bool("sad", false).
+						Float("usage", 42.3).
+						Format("name", "%s %s", "First", "Last").
+						Int("age", 42).
+						Int64("i64", 42).
+						String("eye-color", "brown").
+						Uint("months", 123).
+						Uint64("days", 1234).
+						Msg("should log")
+				},
+			},
+			{
+				"level above threshold should log",
+				"{\"time\":123456789,\"level\":\"error\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"i64\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n",
+				func(l *Logger) {
+					// Use custom time formatter to ensure it is called, and to be able to
+					// use a specific time value for the purpose of validating the output.
+					l.SetTimeFormatter(func(buf []byte) []byte {
+						return append(buf, []byte(`"time":123456789,`)...)
+					})
 
-	t.Run("should log", func(t *testing.T) {
-		bb := new(bytes.Buffer)
-		f := New(bb)
-		f.SetLevel(Debug)
+					l.Error().
+						Bool("happy", true).
+						Bool("sad", false).
+						Float("usage", 42.3).
+						Format("name", "%s %s", "First", "Last").
+						Int("age", 42).
+						Int64("i64", 42).
+						String("eye-color", "brown").
+						Uint("months", 123).
+						Uint64("days", 1234).
+						Msg("should log")
+				},
+			},
 
-		// Use custom time formatter to ensure it is called, and to be able to
-		// use a specific time value for the purpose of validating the output.
-		f.SetTimeFormatter(func(buf []byte) []byte {
-			return append(buf, []byte(`"time":123456789,`)...)
-		})
+			// Default level is warning
+			{
+				"debug when default level is warning",
+				"",
+				func(l *Logger) { l.Debug().Msg("some message") },
+			},
+			{
+				"verbose when default level is warning",
+				"",
+				func(l *Logger) { l.Verbose().Msg("some message") },
+			},
+			{
+				"info when default level is warning",
+				"",
+				func(l *Logger) { l.Info().Msg("some message") },
+			},
+			{
+				"warning when default level is warning",
+				"{\"level\":\"warning\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.Warning().Msg("some message") },
+			},
+			{
+				"error when default level is warning",
+				"{\"level\":\"error\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.Error().Msg("some message") },
+			},
 
-		f.Debug().
-			Bool("happy", true).
-			Bool("sad", false).
-			Float("usage", 42.3).
-			Format("name", "%s %s", "First", "Last").
-			Int("age", 42).
-			Int64("i64", 42).
-			String("eye-color", "brown").
-			Uint("months", 123).
-			Uint64("days", 1234).
-			Msg("should log")
+			// When level is debug
+			{
+				"debug when level is debug",
+				"{\"level\":\"debug\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetDebug().Debug().Msg("some message") },
+			},
+			{
+				"verbose when level is debug",
+				"{\"level\":\"verbose\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetDebug().Verbose().Msg("some message") },
+			},
+			{
+				"info when level is debug",
+				"{\"level\":\"info\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetDebug().Info().Msg("some message") },
+			},
+			{
+				"warning when level is debug",
+				"{\"level\":\"warning\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetDebug().Warning().Msg("some message") },
+			},
+			{
+				"error when level is debug",
+				"{\"level\":\"error\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetDebug().Error().Msg("some message") },
+			},
 
-		want := []byte("{\"time\":123456789,\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"i64\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n")
+			// When level is verbose
+			{
+				"debug when level is verbose",
+				"",
+				func(l *Logger) { l.SetVerbose().Debug().Msg("some message") },
+			},
+			{
+				"verbose when level is verbose",
+				"{\"level\":\"verbose\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetVerbose().Verbose().Msg("some message") },
+			},
+			{
+				"info when level is verbose",
+				"{\"level\":\"info\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetVerbose().Info().Msg("some message") },
+			},
+			{
+				"warning when level is verbose",
+				"{\"level\":\"warning\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetVerbose().Warning().Msg("some message") },
+			},
+			{
+				"error when level is verbose",
+				"{\"level\":\"error\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetVerbose().Error().Msg("some message") },
+			},
 
-		ensureBytes(t, bb.Bytes(), want)
-	})
+			// When level is info
+			{
+				"debug when level is info",
+				"",
+				func(l *Logger) { l.SetInfo().Debug().Msg("some message") },
+			},
+			{
+				"verbose when level is info",
+				"",
+				func(l *Logger) { l.SetInfo().Verbose().Msg("some message") },
+			},
+			{
+				"info when level is info",
+				"{\"level\":\"info\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetInfo().Info().Msg("some message") },
+			},
+			{
+				"warning when level is info",
+				"{\"level\":\"warning\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetInfo().Warning().Msg("some message") },
+			},
+			{
+				"error when level is info",
+				"{\"level\":\"error\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetInfo().Error().Msg("some message") },
+			},
 
-	t.Run("errors", func(t *testing.T) {
-		t.Run("nil", func(t *testing.T) {
-			bb := new(bytes.Buffer)
+			// When level is warning
+			{
+				"debug when level is warning",
+				"",
+				func(l *Logger) { l.SetWarning().Debug().Msg("some message") },
+			},
+			{
+				"verbose when level is warning",
+				"",
+				func(l *Logger) { l.SetWarning().Verbose().Msg("some message") },
+			},
+			{
+				"info when level is warning",
+				"",
+				func(l *Logger) { l.SetWarning().Info().Msg("some message") },
+			},
+			{
+				"warning when level is warning",
+				"{\"level\":\"warning\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetWarning().Warning().Msg("some message") },
+			},
+			{
+				"error when level is warning",
+				"{\"level\":\"error\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetWarning().Error().Msg("some message") },
+			},
 
-			New(bb).Warning().String("pathname", "/some/path").Err(nil).Msg("read file")
+			// When level is error
+			{
+				"debug when level is error",
+				"",
+				func(l *Logger) { l.SetError().Debug().Msg("some message") },
+			},
+			{
+				"verbose when level is error",
+				"",
+				func(l *Logger) { l.SetError().Verbose().Msg("some message") },
+			},
+			{
+				"info when level is error",
+				"",
+				func(l *Logger) { l.SetError().Info().Msg("some message") },
+			},
+			{
+				"warning when level is error",
+				"",
+				func(l *Logger) { l.SetError().Warning().Msg("some message") },
+			},
+			{
+				"error when level is error",
+				"{\"level\":\"error\",\"message\":\"some message\"}\n",
+				func(l *Logger) { l.SetError().Error().Msg("some message") },
+			},
 
-			want := []byte("{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":null,\"message\":\"read file\"}\n")
-			ensureBytes(t, bb.Bytes(), want)
-		})
+			// errors
+			{
+				"error is nil",
+				"{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":null,\"message\":\"read file\"}\n",
+				func(l *Logger) {
+					l.Warning().String("pathname", "/some/path").Err(nil).Msg("read file")
+				},
+			},
+			{
+				"error is non-nil",
+				"{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":\"bytes.Buffer: too large\",\"message\":\"read file\"}\n",
+				func(l *Logger) {
+					l.Warning().String("pathname", "/some/path").Err(bytes.ErrTooLarge).Msg("read file")
+				},
+			},
 
-		t.Run("non-nil", func(t *testing.T) {
-			bb := new(bytes.Buffer)
-
-			New(bb).Warning().String("pathname", "/some/path").Err(bytes.ErrTooLarge).Msg("read file")
-
-			want := []byte("{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":\"bytes.Buffer: too large\",\"message\":\"read file\"}\n")
-			ensureBytes(t, bb.Bytes(), want)
-		})
-	})
-
-	t.Run("branches", func(t *testing.T) {
-		t.Run("filtering", func(t *testing.T) {
-			bb := new(bytes.Buffer)
-			parent := New(bb).SetLevel(Debug)
-
-			child1 := parent.NewBranchWithString("module", "child1").SetLevel(Verbose)
-			child1.Debug().Msg("should not be logged")
-			child1.Verbose().Msg("should be logged")
-
-			child2 := parent.NewBranchWithString("module", "child2").SetLevel(Warning)
-			child2.Info().Msg("should not be logged")
-			child2.Warning().Msg("should be logged")
-
-			want := []byte(`{"level":"verbose","module":"child1","message":"should be logged"}
+			// branches and filtering
+			{
+				"different branches have different levels",
+				`{"level":"verbose","module":"child1","message":"should be logged"}
 {"level":"warning","module":"child2","message":"should be logged"}
-`)
+`,
+				func(l *Logger) {
+					parent := l.SetLevel(Debug)
 
-			ensureBytes(t, bb.Bytes(), want)
-		})
+					child1 := parent.NewBranchWithString("module", "child1").SetLevel(Verbose)
+					child1.Debug().Msg("should not be logged")
+					child1.Verbose().Msg("should be logged")
 
-		t.Run("cascading", func(t *testing.T) {
-			check := func(t *testing.T, want string, callback func(*Logger)) {
-				t.Helper()
-				bb := new(bytes.Buffer)
-				log := New(bb).NewBranchWithString("module", "signals")
-				callback(log)
-				ensureBytes(t, bb.Bytes(), []byte(want))
-			}
+					child2 := parent.NewBranchWithString("module", "child2").SetLevel(Warning)
+					child2.Info().Msg("should not be logged")
+					child2.Warning().Msg("should be logged")
+				},
+			},
+			{
+				"branches have cascading properties",
+				"{\"level\":\"error\",\"module\":\"signals\",\"received\":\"term\",\"relay\":\"success\",\"float\":3.14}\n",
+				func(l *Logger) {
+					l.NewBranchWithString("module", "signals").
+						NewBranchWithString("received", "term").
+						NewBranchWithString("relay", "success").
+						Error().Float("float", 3.14).Msg("")
+				},
+			},
 
-			check(t, "{\"level\":\"error\",\"module\":\"signals\",\"float\":3.14}\n", func(l *Logger) {
-				l.Error().Float("float", 3.14).Msg("")
-			})
-
-			check(t, "{\"level\":\"error\",\"module\":\"signals\",\"received\":\"int\",\"float\":3.14}\n", func(l *Logger) {
-				l.NewBranchWithString("received", "int").Error().Float("float", 3.14).Msg("")
-			})
-
-			check(t, "{\"level\":\"error\",\"module\":\"signals\",\"received\":\"int\",\"relay\":\"success\",\"float\":3.14}\n", func(l *Logger) {
-				l.NewBranchWithString("received", "int").NewBranchWithString("relay", "success").Error().Float("float", 3.14).Msg("")
-			})
-		})
-	})
-
-	t.Run("filter", func(t *testing.T) {
-		const message = "some message"
-
-		check := func(t *testing.T, want string, callback func(*Logger)) {
-			t.Helper()
-			bb := new(bytes.Buffer)
-			log := New(bb)
-			callback(log)
-			ensureBytes(t, bb.Bytes(), []byte(want))
+			// tracer
+			{
+				"all events logged when tracer is true",
+				"{\"level\":\"verbose\",\"first\":\"first\",\"second\":\"second\",\"string\":\"hello\",\"float\":3.14}\n",
+				func(l *Logger) {
+					l = l.SetError().
+						NewBranchWithString("first", "first").
+						NewBranchWithString("second", "second").
+						SetTracing(true)
+					// Normally a verbose message would not get through a logger whose
+					// level is Error, however, this logger has its tracing bit set.
+					l.Verbose().String("string", "hello").Float("float", 3.14).Msg("")
+				},
+			},
 		}
 
-		// default logger mode is warning
-		check(t, "", func(f *Logger) { f.Debug().Msg(message) })
-		check(t, "", func(f *Logger) { f.Verbose().Msg(message) })
-		check(t, "", func(f *Logger) { f.Info().Msg(message) })
-		check(t, "{\"level\":\"warning\",\"message\":\"some message\"}\n", func(f *Logger) { f.Warning().Msg(message) })
-		check(t, "{\"level\":\"error\",\"message\":\"some message\"}\n", func(f *Logger) { f.Error().Msg(message) })
-
-		check(t, "{\"level\":\"debug\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetDebug().Debug().Msg(message) })
-		check(t, "{\"level\":\"verbose\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetDebug().Verbose().Msg(message) })
-		check(t, "{\"level\":\"info\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetDebug().Info().Msg(message) })
-		check(t, "{\"level\":\"warning\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetDebug().Warning().Msg(message) })
-		check(t, "{\"level\":\"error\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetDebug().Error().Msg(message) })
-
-		check(t, "", func(f *Logger) { f.SetVerbose().Debug().Msg(message) })
-		check(t, "{\"level\":\"verbose\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetVerbose().Verbose().Msg(message) })
-		check(t, "{\"level\":\"info\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetVerbose().Info().Msg(message) })
-		check(t, "{\"level\":\"warning\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetVerbose().Warning().Msg(message) })
-		check(t, "{\"level\":\"error\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetVerbose().Error().Msg(message) })
-
-		check(t, "", func(f *Logger) { f.SetInfo().Debug().Msg(message) })
-		check(t, "", func(f *Logger) { f.SetInfo().Verbose().Msg(message) })
-		check(t, "{\"level\":\"info\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetInfo().Info().Msg(message) })
-		check(t, "{\"level\":\"warning\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetInfo().Warning().Msg(message) })
-		check(t, "{\"level\":\"error\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetInfo().Error().Msg(message) })
-
-		check(t, "", func(f *Logger) { f.SetWarning().Debug().Msg(message) })
-		check(t, "", func(f *Logger) { f.SetWarning().Verbose().Msg(message) })
-		check(t, "", func(f *Logger) { f.SetWarning().Info().Msg(message) })
-		check(t, "{\"level\":\"warning\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetWarning().Warning().Msg(message) })
-		check(t, "{\"level\":\"error\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetWarning().Error().Msg(message) })
-
-		check(t, "", func(f *Logger) { f.SetError().Debug().Msg(message) })
-		check(t, "", func(f *Logger) { f.SetError().Verbose().Msg(message) })
-		check(t, "", func(f *Logger) { f.SetError().Info().Msg(message) })
-		check(t, "", func(f *Logger) { f.SetError().Warning().Msg(message) })
-		check(t, "{\"level\":\"error\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetError().Error().Msg(message) })
+		for _, single := range tests {
+			t.Run(single.name, func(t *testing.T) {
+				bb := new(bytes.Buffer)
+				single.call(New(bb))
+				ensureBytes(t, bb.Bytes(), []byte(single.want))
+			})
+		}
 	})
-
-	t.Run("tracer", func(t *testing.T) {
-		bb := new(bytes.Buffer)
-
-		log := New(bb).
-			SetError().
-			NewBranchWithString("first", "first").
-			NewBranchWithString("second", "second").
-			SetTracing(true)
-
-		// Normally a verbose message would not get through a logger whose
-		// level is Error, however, this logger has its tracing bit set.
-		log.Verbose().String("string", "hello").Float("float", 3.14).Msg("")
-
-		want := []byte("{\"level\":\"verbose\",\"first\":\"first\",\"second\":\"second\",\"string\":\"hello\",\"float\":3.14}\n")
-		ensureBytes(t, bb.Bytes(), want)
-	})
-}
-
-type panicyWriter struct {
-	w           io.Writer
-	isTriggered bool
-}
-
-func (pw *panicyWriter) Write(buf []byte) (int, error) {
-	if pw.isTriggered {
-		panic("writer-boom!")
-	}
-	return pw.w.Write(buf)
 }
 
 func BenchmarkLogger(b *testing.B) {
 	bb := bytes.NewBuffer(make([]byte, 0, 4096))
-	f := New(bb)
+	l := New(bb)
 
 	b.Run("should not log", func(b *testing.B) {
-		f.SetLevel(Error)
-
 		for i := 0; i < b.N; i++ {
-			f.Debug().Bool("happy", true).Bool("sad", false).Msg("")
+			l.Debug().Bool("happy", true).Bool("sad", false).Msg("")
 			ensureBytes(b, bb.Bytes(), nil)
-
 			// NOTE: do not need to invoke bb.Reset() because nothing should be written.
 		}
 	})
 
 	b.Run("should log", func(b *testing.B) {
 		b.Run("without string formatting", func(b *testing.B) {
-			want := []byte("{\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"age\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n")
-
-			f.SetLevel(Debug)
+			want := []byte("{\"level\":\"warning\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"age\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n")
 
 			for i := 0; i < b.N; i++ {
-				f.Debug().
+				l.Warning().
 					Bool("happy", true).
 					Bool("sad", false).
 					Float("usage", 42.3).
@@ -272,20 +393,16 @@ func BenchmarkLogger(b *testing.B) {
 					Uint("months", 123).
 					Uint64("days", 1234).
 					Msg("should log")
-
 				ensureBytes(b, bb.Bytes(), want)
-
 				bb.Reset()
 			}
 		})
 
 		b.Run("with string formatting", func(b *testing.B) {
-			want := []byte("{\"level\":\"info\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"with string formatting\"}\n")
-
-			f.SetLevel(Debug)
+			want := []byte("{\"level\":\"warning\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"with string formatting\"}\n")
 
 			for i := 0; i < b.N; i++ {
-				f.Info().
+				l.Warning().
 					Bool("happy", true).
 					Bool("sad", false).
 					Float("usage", 42.3).
@@ -295,9 +412,7 @@ func BenchmarkLogger(b *testing.B) {
 					Uint("months", 123).
 					Uint64("days", 1234).
 					Msg("with string formatting")
-
 				ensureBytes(b, bb.Bytes(), want)
-
 				bb.Reset()
 			}
 		})
