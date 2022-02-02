@@ -171,6 +171,23 @@ func TestLogger(t *testing.T) {
 		check(t, "", func(f *Logger) { f.SetError().Warning().Msg(message) })
 		check(t, "{\"level\":\"error\",\"message\":\"some message\"}\n", func(f *Logger) { f.SetError().Error().Msg(message) })
 	})
+
+	t.Run("tracer", func(t *testing.T) {
+		bb := new(bytes.Buffer)
+
+		log := New(bb).
+			SetError().
+			NewBranchWithString("first", "first").
+			NewBranchWithString("second", "second").
+			SetTracing(true)
+
+		// Normally a verbose message would not get through a logger whose
+		// level is Error, however, this logger has its tracing bit set.
+		log.Verbose().String("string", "hello").Float("float", 3.14).Msg("")
+
+		want := []byte("{\"level\":\"verbose\",\"first\":\"first\",\"second\":\"second\",\"string\":\"hello\",\"float\":3.14}\n")
+		ensureBytes(t, bb.Bytes(), want)
+	})
 }
 
 func BenchmarkLogger(b *testing.B) {

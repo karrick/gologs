@@ -248,3 +248,114 @@ particular branch of logs.
 ```Go
     log2 := log.NewBranch()
 ```
+
+### Tracer Logging
+
+I'm sure I'm not the only person who wanted to figure out why a
+particular request or action was not working properly on a running
+service, decided to activate DEBUG log levels to watch the single
+request percolate through the service, to be reminded that the service
+is actually serving tens of thousands of requests per second, and now
+the additional slowdown that accompanies logging each and every single
+log event in the entire program not only slows it down, but makes it
+impossible to see the action or request in the maelstrom of log
+messages scrolling by the terminal.
+
+For instance, let's say an administrator or developer wants to send a
+request through their running system, logging all events related to
+that request, regardless of the log level, but not necessarily see
+events for other requests.
+
+For this example, remember that each module has a Logger it uses
+whenever logging any event. Let's say the `Foo` module receives
+requests to process. The `Foo` can create highly ephemeral Tracer
+Loggers to be assigned to the request instance itself, and provided
+that the request methods log using the provided logger, then those
+events will bypass any filters in place between where the log event
+was created to the base of the logging tree, and get written to the
+underlying io.Writer.
+
+```Go
+    type Request struct {
+        log   *gologs.Logger
+        query string
+        // ...
+    }
+
+    func (f *Foo) NewRequest(query string) (*Request, error) {
+        r := &Request{
+            log:   f.log.NewBranchWithString("request", query),
+            query: query,
+        }
+        if strings.HasSuffix(key, "*") {
+            r.log.SetTracing(true)
+        }
+        // ...
+    }
+
+    func (r *Request) Process() error {
+        r.log.Debug().Msg("beginning processing of request")
+        // ...
+    }
+```
+
+It is important to remember that events sent to a Logger configured
+for tracing will bypass all log level filters. So `log`, `Foo`, and
+`Bar` all might be set for Warning level, but you want to follow a
+particular request through the system, without changing the log
+levels, also causing the system to log every other request. Tracer
+logic is not meant to be added and removed while debugging a program,
+but rather left in place, run in production, but not used, unless some
+special developer or administrator requested token marks a particular
+event as one for which all events should be logged.
+
+Here's an example of what Tracer Loggers are trying to eliminate,
+assuming a hypothetical `Logging.Trace` method existed:
+
+```Go
+    // Example of desired behavior without tracer logic. Each log line
+    // becomes a conditional.
+    func (r *Request) Handler() {
+        // It is inconvenient to branch log events each place you want to
+        // emit a log event.
+        if r.isSpecial {
+            r.Log.Trace().Msg("handling request")
+        } else {
+            r.Log.Debug().Msg("handling request: %v", r)
+        }
+
+        // Do some work, then need to log more:
+        if r.isSpecial {
+            r.Log.Trace().Int("request-cycles", r.Cycles).Msg("")
+        } else {
+            r.Log.Debug().Int("request-cycles", r.Cycles).Msg("")
+        }
+    }
+```
+
+I propose something better, where the developer does not need to
+include conditional statements to branch based on whether the log
+should receive Tracer status or Verbose status for each log
+event. Yet, when Tracer status, still get written to the log when
+something requires it.
+
+```Go
+    func NewRequest(log *gologs.Logger, key string) (*Request, error) {
+        r := &R{
+            log: log.NewBranchWithString("key", key),
+            Key: key,
+        }
+        if strings.HasSuffix(key, "*") {
+            r.log.SetTracing(true)
+        }
+        return r, nil
+    }
+
+    func (r *Request) Handler() {
+        r.Log.Debug().Msg("handling request")
+
+        // Do some work, then need to log more:
+
+        r.Log.Debug().Int("request-cycles", r.Cycles).Msg("")
+    }
+```

@@ -144,11 +144,23 @@ func (log *Logger) SetTimeFormatter(callback func([]byte) []byte) *Logger {
 	return log
 }
 
+// SetTracing changes the Logger's tracing to the specified value without
+// blocking.
+func (log *Logger) SetTracing(enabled bool) *Logger {
+	if enabled {
+		atomic.StoreUint32((*uint32)(&log.event.isTracer), 1)
+	} else {
+		atomic.StoreUint32((*uint32)(&log.event.isTracer), 0)
+	}
+	return log
+}
+
 // Debug returns an Event to be formatted and sent to the Logger's underlying
 // io.Writer when the Logger's level is Debug. If the Logger's level is above
 // Debug, this method returns without blocking.
 func (log *Logger) Debug() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Debug {
+	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Debug &&
+		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
@@ -166,7 +178,8 @@ func (log *Logger) Debug() *Event {
 // underlying io.Writer when the Logger's level is Debug or Verbose. If the
 // Logger's level is above Verbose, this method returns without blocking.
 func (log *Logger) Verbose() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Verbose {
+	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Verbose &&
+		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
@@ -184,7 +197,8 @@ func (log *Logger) Verbose() *Event {
 // io.Writer when the Logger's level is Debug, Verbose, or Info. If the
 // Logger's level is above Info, this method returns without blocking.
 func (log *Logger) Info() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Info {
+	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Info &&
+		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
@@ -203,7 +217,8 @@ func (log *Logger) Info() *Event {
 // Warning. If the Logger's level is above Warning, this method returns
 // without blocking.
 func (log *Logger) Warning() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Warning {
+	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Warning &&
+		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
@@ -220,9 +235,6 @@ func (log *Logger) Warning() *Event {
 // Error returns an Event to be formatted and sent to the Logger's underlying
 // io.Writer.
 func (log *Logger) Error() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Error {
-		return nil
-	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
 	if log.event.when != nil {
 		log.event.buf = log.event.when(log.event.buf)
@@ -239,12 +251,13 @@ func (log *Logger) Error() *Event {
 // specifically, but rather receive an Event from calling Debug(), Verbose(),
 // Info(), Warning(), or Error() methods of Logger instance.
 type Event struct {
-	buf    []byte
-	branch []byte
-	when   func([]byte) []byte
-	o      *output
-	mutex  sync.Mutex
-	level  uint32
+	buf      []byte
+	branch   []byte
+	when     func([]byte) []byte
+	o        *output
+	mutex    sync.Mutex
+	level    uint32
+	isTracer uint32
 }
 
 // Bool encodes a boolean property value to the Event using the specified
