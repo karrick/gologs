@@ -35,58 +35,58 @@ Why yet another logging library?
 package main
 
 import (
-	"flag"
-	"fmt"
-	"os"
+    "flag"
+    "fmt"
+    "os"
 
-	"github.com/karrick/gologs"
+    "github.com/karrick/gologs"
 )
 
 func main() {
-	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
-	optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
-	optQuiet := flag.Bool("quiet", false, "Print warning and error output to stderr")
-	flag.Parse()
+    optDebug := flag.Bool("debug", false, "Print debug output to stderr")
+    optVerbose := flag.Bool("verbose", false, "Print verbose output to stderr")
+    optQuiet := flag.Bool("quiet", false, "Print warning and error output to stderr")
+    flag.Parse()
 
-	// Initialize the global log variable, which will be used very much like the
-	// log standard library would be used.
-	log := gologs.New(os.Stderr)
+    // Initialize the global log variable, which will be used very much like the
+    // log standard library would be used.
+    log := gologs.New(os.Stderr)
 
-	// Configure log level according to command line flags.
-	if *optDebug {
-		log.SetDebug()
-	} else if *optVerbose {
-		log.SetVerbose()
-	} else if *optQuiet {
-		log.SetError()
-	} else {
-		log.SetInfo()
-	}
+    // Configure log level according to command line flags.
+    if *optDebug {
+        log.SetDebug()
+    } else if *optVerbose {
+        log.SetVerbose()
+    } else if *optQuiet {
+        log.SetError()
+    } else {
+        log.SetInfo()
+    }
 
-	// For sake of example, invoke printSize with a logger that includes the
-	// function name in the JSON properties of the log message.
-	pl := log.NewBranchWithString("function", "printSize")
+    // For sake of example, invoke printSize with a logger that includes the
+    // function name in the JSON properties of the log message.
+    pl := log.NewBranchWithString("function", "printSize")
 
-	for _, arg := range flag.Args() {
-		log.Verbose().String("arg", arg).Msg("")
-		if err := printSize(pl, arg); err != nil {
-			log.Warning().Msg(err.Error())
-		}
-	}
+    for _, arg := range flag.Args() {
+        log.Verbose().String("arg", arg).Msg("")
+        if err := printSize(pl, arg); err != nil {
+            log.Warning().Msg(err.Error())
+        }
+    }
 }
 
 func printSize(log *gologs.Logger, pathname string) error {
-	stat, err := os.Stat(pathname)
-	if err != nil {
-		return err
-	}
-	log.Debug().Int("size", int64(stat.Size())).Msg("")
+    stat, err := os.Stat(pathname)
+    if err != nil {
+        return err
+    }
+    log.Debug().Int("size", int64(stat.Size())).Msg("")
 
-	if (stat.Mode() & os.ModeType) == 0 {
-		fmt.Printf("%s is %d bytes\n", pathname, stat.Size())
-	}
+    if (stat.Mode() & os.ModeType) == 0 {
+        fmt.Printf("%s is %d bytes\n", pathname, stat.Size())
+    }
 
-	return nil
+    return nil
 }
 ```
 
@@ -106,17 +106,17 @@ formatting functions or a user specified one.
     log1 := gologs.New(os.Stderr)
     log1.Info().String("version", "3.14").Msg("started program")
     // Output:
-	// {"level":"info","version":"3.14","message":"starting program"}
+    // {"level":"info","version":"3.14","message":"starting program"}
 
     log2 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeUnix)
     log2.Info().String("version", ProgramVersion).Msg("started program")
     // Output:
-	// {"time":1643776764,"level":"info","version":"3.14","message":"starting program"}
+    // {"time":1643776764,"level":"info","version":"3.14","message":"starting program"}
 
     log3 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeUnixNano)
     log3.Info().String("version", ProgramVersion).Msg("started program")
     // Output:
-	// {"time":1643776794592630092,"level":"info","version":"3.14","message":"starting program"}
+    // {"time":1643776794592630092,"level":"info","version":"3.14","message":"starting program"}
 ```
 
 ### Log Levels
@@ -152,15 +152,15 @@ configure the log level based on their service needs.
 Perhaps more idiomatic of a command line program log configuration:
 
 ```Go
-	if *optDebug {
-		log.SetDebug()
-	} else if *optVerbose {
-		log.SetVerbose()
-	} else if *optQuiet {
-		log.SetError()
-	} else {
-		log.SetInfo()
-	}
+    if *optDebug {
+        log.SetDebug()
+    } else if *optVerbose {
+        log.SetVerbose()
+    } else if *optQuiet {
+        log.SetError()
+    } else {
+        log.SetInfo()
+    }
 ```
 
 ### A Tree of Logs with Multiple Branches
