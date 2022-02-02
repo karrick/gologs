@@ -1,6 +1,7 @@
 package gologs
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -155,6 +156,31 @@ func (log *Logger) SetTracing(enabled bool) *Logger {
 	return log
 }
 
+// formatTimePanics attempts to format the time using the stored time
+// formatting callback function. When the function does not panic, it returns
+// false. When the function does panic, it returns true so the Logger method
+// can stop processing the provided event.
+func (log *Logger) formatTimePanics() (panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			var err error
+			switch t := r.(type) {
+			case error:
+				err = t
+			case string:
+				err = errors.New(t)
+			default:
+				err = fmt.Errorf("%v", t)
+			}
+			log.event.buf = log.event.buf[:1]
+			log.event.Err(err).Msg("panic when time formatter invoked")
+			panicked = true
+		}
+	}()
+	log.event.buf = log.event.when(log.event.buf)
+	return false
+}
+
 // Debug returns an Event to be formatted and sent to the Logger's underlying
 // io.Writer when the Logger's level is Debug. If the Logger's level is above
 // Debug, this method returns without blocking.
@@ -164,8 +190,8 @@ func (log *Logger) Debug() *Event {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.when != nil {
-		log.event.buf = log.event.when(log.event.buf)
+	if log.event.when != nil && log.formatTimePanics() {
+		return nil
 	}
 	log.event.buf = append(log.event.buf, []byte("\"level\":\"debug\",")...)
 	if log.event.branch != nil {
@@ -183,8 +209,8 @@ func (log *Logger) Verbose() *Event {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.when != nil {
-		log.event.buf = log.event.when(log.event.buf)
+	if log.event.when != nil && log.formatTimePanics() {
+		return nil
 	}
 	log.event.buf = append(log.event.buf, []byte("\"level\":\"verbose\",")...)
 	if log.event.branch != nil {
@@ -202,8 +228,8 @@ func (log *Logger) Info() *Event {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.when != nil {
-		log.event.buf = log.event.when(log.event.buf)
+	if log.event.when != nil && log.formatTimePanics() {
+		return nil
 	}
 	log.event.buf = append(log.event.buf, []byte("\"level\":\"info\",")...)
 	if log.event.branch != nil {
@@ -222,8 +248,8 @@ func (log *Logger) Warning() *Event {
 		return nil
 	}
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.when != nil {
-		log.event.buf = log.event.when(log.event.buf)
+	if log.event.when != nil && log.formatTimePanics() {
+		return nil
 	}
 	log.event.buf = append(log.event.buf, []byte("\"level\":\"warning\",")...)
 	if log.event.branch != nil {
@@ -236,8 +262,8 @@ func (log *Logger) Warning() *Event {
 // io.Writer.
 func (log *Logger) Error() *Event {
 	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.when != nil {
-		log.event.buf = log.event.when(log.event.buf)
+	if log.event.when != nil && log.formatTimePanics() {
+		return nil
 	}
 	log.event.buf = append(log.event.buf, []byte("\"level\":\"error\",")...)
 	if log.event.branch != nil {
@@ -356,6 +382,13 @@ func (event *Event) Msg(s string) error {
 		return nil
 	}
 
+	// Using defer here to prevent holding lock if underlying io.Writer
+	// panics.
+	defer func() {
+		event.mutex.Unlock()
+		event.buf = event.buf[:1] // Clear everything after initial open curly brace.
+	}()
+
 	if s != "" {
 		event.buf = append(event.buf, []byte(`"message":`)...)
 		event.buf = appendEncodedJSONFromString(event.buf, s)
@@ -365,9 +398,7 @@ func (event *Event) Msg(s string) error {
 	event.buf[len(event.buf)-1] = '}'   // Overwrite final comma with close curly brace.
 	event.buf = append(event.buf, '\n') // Append newline.
 	_, err := event.o.Write(event.buf)
-	event.buf = event.buf[:1] // Clear everything after initial open curly brace.
 
-	event.mutex.Unlock()
 	return err
 }
 

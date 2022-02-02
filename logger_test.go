@@ -2,6 +2,7 @@ package gologs
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -13,6 +14,51 @@ func ensureBytes(tb testing.TB, got, want []byte) {
 }
 
 func TestLogger(t *testing.T) {
+	t.Run("panic protection", func(t *testing.T) {
+		// The caller provides one or two dependencies that this structure
+		// leverages. Either of them may panic when used, so we need to
+		// provide testing to ensure this structure behaves properly when
+		// either of those dependencies do panic.
+
+		t.Run("writer", func(t *testing.T) {
+			bb := new(bytes.Buffer)
+			pw := &panicyWriter{w: bb} // a test structure used for this test that optionally panics
+			log := New(pw).SetInfo()
+
+			log.Info().Msg("message 1")
+
+			ensurePanic(t, "writer-boom!", func() {
+				pw.isTriggered = true
+				log.Info().Msg("message 2")
+			})
+
+			pw.isTriggered = false
+			log.Info().Msg("message 3")
+
+			want := []byte("{\"level\":\"info\",\"message\":\"message 1\"}\n{\"level\":\"info\",\"message\":\"message 3\"}\n")
+			ensureBytes(t, bb.Bytes(), want)
+		})
+
+		t.Run("time formatter", func(t *testing.T) {
+			bb := new(bytes.Buffer)
+			log := New(bb).SetInfo()
+
+			log.Info().Msg("message 1")
+
+			log.SetTimeFormatter(func([]byte) []byte {
+				panic("time-formatter-boom!")
+			})
+
+			log.Info().Msg("message 2") // this panics, but it should be handled
+
+			log.SetTimeFormatter(func(buf []byte) []byte { return buf })
+			log.Info().Msg("message 3")
+
+			want := []byte("{\"level\":\"info\",\"message\":\"message 1\"}\n{\"error\":\"time-formatter-boom!\",\"message\":\"panic when time formatter invoked\"}\n{\"level\":\"info\",\"message\":\"message 3\"}\n")
+			ensureBytes(t, bb.Bytes(), want)
+		})
+	})
+
 	t.Run("should not log", func(t *testing.T) {
 		bb := new(bytes.Buffer)
 		f := New(bb)
@@ -188,6 +234,18 @@ func TestLogger(t *testing.T) {
 		want := []byte("{\"level\":\"verbose\",\"first\":\"first\",\"second\":\"second\",\"string\":\"hello\",\"float\":3.14}\n")
 		ensureBytes(t, bb.Bytes(), want)
 	})
+}
+
+type panicyWriter struct {
+	w           io.Writer
+	isTriggered bool
+}
+
+func (pw *panicyWriter) Write(buf []byte) (int, error) {
+	if pw.isTriggered {
+		panic("writer-boom!")
+	}
+	return pw.w.Write(buf)
 }
 
 func BenchmarkLogger(b *testing.B) {
