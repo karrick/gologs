@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/karrick/gologs/v2"
+	"github.com/karrick/gologs"
 )
 
 func main() {

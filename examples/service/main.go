@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/karrick/gologs/v2"
+	"github.com/karrick/gologs"
 )
 
 const ProgramVersion = "3.14"

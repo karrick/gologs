@@ -18,10 +18,11 @@ Why yet another logging library?
    logging needs, for both command line and long running daemons.
 
 1. This should be lightweight. This should not spin up any go
-   routines. This should process the log format line only during
-   initialization. Events that do not get logged should not be
-   formatted. This should not ask the OS for the system time if log
-   format specification does not require it.
+   routines. This should only allocate when creating a new logger, a
+   new log branch, or when the user specifically requires it by
+   invoking the `Format` method. Events that do not get logged should
+   not be formatted. This should not ask the OS for the system time if
+   log format specification does not require it.
 
 1. This should be correct. It should never invoke Write more than once
    per logged event.
@@ -38,7 +39,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/karrick/gologs/v2"
+	"github.com/karrick/gologs"
 )
 
 func main() {
@@ -93,20 +94,29 @@ func printSize(log *gologs.Logger, pathname string) error {
 
 ### Creating a Logger Instance
 
-Everything written by this logger is formatted according to the
-provided template string, given a trailing newline, and written to the
-underlying io.Writer. That io.Writer might be os.Stderr, or it might
-be a log rolling library, which in turn, is writting to a set of
-managed log files. The library provides a few default log template
-strings, but in every case, when the logger is created, the template
-string is compiled to a slice of function pointers that are evaluated
-over each log event to format the event according to the
-template. This is in contrast to many other logging libraries that
-evaluate the template string for each event to be logged.
+Everything written by this logger is formatted as a JSON event, given
+a trailing newline, and written to the underlying io.Writer. That
+io.Writer might be os.Stderr, or it might be a log rolling library,
+which in turn, is writting to a set of managed log files. The library
+provides a few time formatting functions, but the time is only
+included if the Logger is updated to either one of the provided time
+formatting functions or a user specified one.
 
 ```Go
-    log := gologs.New(os.Stderr)
-    log.Info().String("version", ProgramVersion).Msg("started program")
+    log1 := gologs.New(os.Stderr)
+    log1.Info().String("version", "3.14").Msg("started program")
+    // Output:
+	// {"level":"info","version":"3.14","message":"starting program"}
+
+    log2 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeUnix)
+    log2.Info().String("version", ProgramVersion).Msg("started program")
+    // Output:
+	// {"time":1643776764,"level":"info","version":"3.14","message":"starting program"}
+
+    log3 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeUnixNano)
+    log3.Info().String("version", ProgramVersion).Msg("started program")
+    // Output:
+	// {"time":1643776794592630092,"level":"info","version":"3.14","message":"starting program"}
 ```
 
 ### Log Levels
