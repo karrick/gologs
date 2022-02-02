@@ -1,30 +1,23 @@
 package gologs
 
 import (
-	"fmt"
 	"os"
-	"strings"
 )
 
 func ExampleLogger() {
 	// Initialize the logger mode based on the provided command line flags.
 	// Create a filtered logger by compiling the log format string.
-	log, err := New(os.Stdout, "{message}")
-	if err != nil {
-		panic(err)
-	}
+	log := New(os.Stdout)
 	log.SetVerbose()
-	log.Verbose("Starting program")
-	log.Debug("something important to developers...")
+	log.Verbose().Msg("starting program")
+	log.Debug().Msg("something important to developers...")
 
-	a := &Alpha{Log: log.NewBranchWithPrefix("[ALPHA] ").SetVerbose()}
+	a := &Alpha{Log: log.NewBranchWithString("module", "alpha").SetVerbose()}
 	a.run([]string{"one", "@two", "three", "@four"})
 
 	// Output:
-	// Starting program
-	// [ALPHA] Starting module
-	// [ALPHA] [arg=@two] handling request: @two
-	// [ALPHA] [arg=@four] handling request: @four
+	// {"level":"verbose","message":"starting program"}
+	// {"level":"verbose","module":"alpha","message":"starting module"}
 }
 
 type Alpha struct {
@@ -33,17 +26,12 @@ type Alpha struct {
 }
 
 func (a *Alpha) run(args []string) {
-	a.Log.Verbose("Starting module")
+	a.Log.Verbose().Msg("starting module")
 	for _, arg := range args {
 		// Create a request instance with its own logger.
 		request := &Request{
 			Log:   a.Log, // Usually a request can be logged at same level as module.
 			Query: arg,
-		}
-		if strings.HasPrefix(arg, "@") {
-			// For demonstration purposes, let's arbitrarily cause some of the
-			// events to be logged with tracers.
-			request.Log = request.Log.NewTracer(fmt.Sprintf("[arg=%s] ", arg))
 		}
 		request.Handle()
 	}
@@ -59,5 +47,5 @@ type Request struct {
 func (r *Request) Handle() {
 	// Anywhere in the call flow for the request, if it wants to log something,
 	// it should log to the Request's logger.
-	r.Log.Debug("handling request: %v", r.Query)
+	r.Log.Debug().String("query", r.Query).Msg("handling request")
 }

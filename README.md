@@ -7,8 +7,6 @@ Why yet another logging library?
 1. Create a log, split it into branches, give each branch different
    log prefixes, and set each branch to independent log level.
 
-1. More intuitive and useful tracer logging.
-
 ## Goals
 
 1. This should work within the Go ecosystem. Specifically, it should
@@ -40,12 +38,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/karrick/gologs"
+	"github.com/karrick/gologs/v2"
 )
-
-// Rather than use the log standard library, this example creates a global log
-// variable, and once initialized, uses it to log events.
-var log *gologs.Logger
 
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
@@ -55,11 +49,7 @@ func main() {
 
 	// Initialize the global log variable, which will be used very much like the
 	// log standard library would be used.
-	var err error
-	log, err = gologs.New(os.Stderr, gologs.DefaultCommandFormat)
-	if err != nil {
-		panic(err)
-	}
+	log := gologs.New(os.Stderr)
 
 	// Configure log level according to command line flags.
 	if *optDebug {
@@ -72,20 +62,24 @@ func main() {
 		log.SetInfo()
 	}
 
+	// For sake of example, invoke printSize with a logger that includes the
+	// function name in the JSON properties of the log message.
+	pl := log.NewBranchWithString("function", "printSize")
+
 	for _, arg := range flag.Args() {
-		log.Verbose("handling arg: %q", arg)
-		if err := printSize(arg); err != nil {
-			log.Info("%s", err)
+		log.Verbose().String("arg", arg).Msg("")
+		if err := printSize(pl, arg); err != nil {
+			log.Warning().Msg(err.Error())
 		}
 	}
 }
 
-func printSize(pathname string) error {
+func printSize(log *gologs.Logger, pathname string) error {
 	stat, err := os.Stat(pathname)
 	if err != nil {
 		return err
 	}
-	log.Debug("file stat: %v", stat)
+	log.Debug().Int("size", int64(stat.Size())).Msg("")
 
 	if (stat.Mode() & os.ModeType) == 0 {
 		fmt.Printf("%s is %d bytes\n", pathname, stat.Size())
@@ -111,11 +105,8 @@ template. This is in contrast to many other logging libraries that
 evaluate the template string for each event to be logged.
 
 ```Go
-    log, err := gologs.New(os.Stderr, gologs.DefaultServiceFormat)
-    if err != nil {
-        panic(err)
-    }
-    log.Info("started program: v%s", ProgramVersion) // "2006/01/02 15:04:05 started program: v3.14"
+    log := gologs.New(os.Stderr)
+    log.Info().String("version", ProgramVersion).Msg("started program")
 ```
 
 ### Log Levels
@@ -126,12 +117,12 @@ ignored.
 
 ```Go
     log.SetVerbose()
-    log.Info("this event gets logged")
-    log.Verbose("and so does this event")
-    log.Debug("but this event gets ignored")
+    log.Info().Msg("this event gets logged")
+    log.Verbose().Msg("and so does this event")
+    log.Debug().Msg("but this event gets ignored")
 
     log.SetLevel(gologs.Debug)
-    log.Debug("this event does get logged")
+    log.Debug().Msg("this event does get logged")
 ```
 
 When a logger is in Error mode, only Error events are logged. When a
@@ -225,12 +216,12 @@ events to them.
             // NOTE: the branch prefix has a trailing space in order to
             // format nicely. You may prefer "FOO: " as your prefix, or
             // even just "FOO:".
-            log: log.NewBranchWithPrefix("[FOO] "),
+            log: log.NewBranchWithString("module","FOO"),
         }
         go foo.run()
 
         bar := &Bar{
-            log: log.NewBranchWithPrefix("[BAR] "),
+            log: log.NewBranchWithString("module","BAR"),
         }
         go bar.run()
     }
@@ -249,110 +240,4 @@ particular branch of logs.
 
 ```Go
     log2 := log.NewBranch()
-```
-
-### Tracer Logging
-
-I'm sure I'm not the only person who wanted to figure out why a
-particular request or action was not working properly on a running
-service, decided to activate DEBUG log levels to watch the single
-request percolate through the service, to be reminded that the service
-is actually serving tens of thousands of requests per second, and now
-the additional slowdown that accompanies logging each and every single
-log event in the entire program not only slows it down, but makes it
-impossible to see the action or request in the maelstrom of log
-messages scrolling by the terminal.
-
-For instance, let's say an administrator or developer wants to send a
-request through their running system, logging all events related to
-that request, regardless of the log level, but not necessarily see
-events for other requests.
-
-For this example, remember that each module has a Logger it uses
-whenever logging any event. Let's say the `Foo` module receives
-requests to process. The `Foo` can create highly ephemeral Tracer
-Loggers to be assigned to the request instance itself, and provided
-that the request methods log using the provided logger, then those
-events will bypass any filters in place between where the log event
-was created to the base of the logging tree, and get written to the
-underlying io.Writer.
-
-```Go
-    type Request struct {
-        log   *gologs.Logger
-        query string
-        // ...
-    }
-
-    func (f *Foo) NewRequest(query string) (*Request, error) {
-        r := &Request{
-            log:   f.log,
-            query: query,
-        }
-        if strings.HasSuffix("*") {
-            r.log = r.log.NewTracer(fmt.Sprintf("[REQUEST %q] ", query))
-        }
-        // ...
-    }
-
-    func (r *Request) Process() error {
-        r.log.Debug("beginning processing of request: %v", r)
-        // ...
-    }
-```
-
-It is important to remember that events sent to a Tracer Logger bypass
-all log level filters. So `log`, `Foo`, and `Bar` all might be set for
-administrator level, but you want to follow a particular request
-through the system, without changing the log levels, also causing the
-system to log every other request. Tracer logic is not meant to be
-added and removed while debugging a program, but rather left in place,
-run in production, but not used, unless some special developer or
-administrator requested token marks a particular event as one for
-which all events should be logged.
-
-Here's an example of what Tracer Loggers are trying to eliminate:
-
-```Go
-    // Example of desired behavior without tracer logic. Each log line
-    // becomes a conditional.
-    func (r *Request) Handler() {
-        // It is inconvenient to branch log events each place you want to
-        // emit a log event.
-        if r.isSpecial {
-            r.Log.Trace("handling request: %v", r)
-        } else {
-            r.Log.Debug("handling request: %v", r)
-        }
-
-        // Do some work, then need to log more:
-        if r.isSpecial {
-            r.Log.Trace("request.Cycles: %d", r.Cycles)
-        } else {
-            r.Log.Debug("request.Cycles: %d", r.Cycles)
-        }
-    }
-```
-
-I propose something better, where the developer does not need to
-include conditional statements to branch based on whether the log
-should receive Tracer status or Verbose status for each log
-event. Yet, when Tracer status, still get written to the log when
-something requires it.
-
-```Go
-    func NewRequest(log *gologs.Logger, key string) (*Request, error) {
-        r := &R{Log: log, Key: key}
-        if r.isSpecial {
-            r.Log = r.Log.NewTracer(fmt.Sprintf("[REQUEST %s] ", r.Key))
-        }
-        return r, nil
-    }
-
-    func (r *Request) Handler() {
-        r.Log.Debug("handling request: %v", r)
-
-        // Do some work, then need to log more:
-        r.Log.Debug("request.Cycles: %d", r.Cycles)
-    }
 ```

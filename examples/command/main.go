@@ -5,12 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/karrick/gologs"
+	"github.com/karrick/gologs/v2"
 )
-
-// Rather than use the log standard library, this example creates a global log
-// variable, and once initialized, uses it to log events.
-var log *gologs.Logger
 
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
@@ -20,11 +16,7 @@ func main() {
 
 	// Initialize the global log variable, which will be used very much like the
 	// log standard library would be used.
-	var err error
-	log, err = gologs.New(os.Stderr, gologs.DefaultCommandFormat)
-	if err != nil {
-		panic(err)
-	}
+	log := gologs.New(os.Stderr)
 
 	// Configure log level according to command line flags.
 	if *optDebug {
@@ -37,20 +29,24 @@ func main() {
 		log.SetInfo()
 	}
 
+	// For sake of example, invoke printSize with a logger that includes the
+	// function name in the JSON properties of the log message.
+	pl := log.NewBranchWithString("function", "printSize")
+
 	for _, arg := range flag.Args() {
-		log.Verbose("handling arg: %q", arg)
-		if err := printSize(arg); err != nil {
-			log.Info("%s", err)
+		log.Verbose().String("arg", arg).Msg("")
+		if err := printSize(pl, arg); err != nil {
+			log.Warning().Msg(err.Error())
 		}
 	}
 }
 
-func printSize(pathname string) error {
+func printSize(log *gologs.Logger, pathname string) error {
 	stat, err := os.Stat(pathname)
 	if err != nil {
 		return err
 	}
-	log.Debug("file stat: %v", stat)
+	log.Debug().Int("size", int64(stat.Size())).Msg("")
 
 	if (stat.Mode() & os.ModeType) == 0 {
 		fmt.Printf("%s is %d bytes\n", pathname, stat.Size())

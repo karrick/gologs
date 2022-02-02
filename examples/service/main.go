@@ -3,16 +3,13 @@ package main
 import (
 	"bufio"
 	"flag"
-	"fmt"
 	"io"
 	"os"
-	"strings"
 
-	"github.com/karrick/gologs"
+	"github.com/karrick/gologs/v2"
 )
 
-// Rather than creating a global log variable, in this example each struct has a
-// log field it will use when it needs to log events.
+const ProgramVersion = "3.14"
 
 func main() {
 	optDebug := flag.Bool("debug", false, "Print debug output to stderr")
@@ -22,10 +19,7 @@ func main() {
 
 	// Create a local log variable, which will be used to create log branches
 	// for other program modules.
-	log, err := gologs.New(os.Stderr, gologs.DefaultServiceFormat)
-	if err != nil {
-		panic(err)
-	}
+	log := gologs.New(os.Stderr)
 
 	// Configure log level according to command line flags.
 	if *optDebug {
@@ -38,12 +32,17 @@ func main() {
 		log.SetInfo()
 	}
 
-	log.Verbose("Starting service; debug: %v; verbose: %v", *optDebug, *optVerbose)
-	log.Debug("something important to developers...")
+	log.Verbose().
+		String("version", ProgramVersion).
+		Bool("debug", *optDebug).
+		Bool("verbose", *optVerbose).
+		Msg("starting service")
 
-	a := &Alpha{Log: log.NewBranchWithPrefix("[ALPHA] ").SetVerbose()}
+	log.Debug().Msg("something important to developers...")
+
+	a := &Alpha{Log: log.NewBranchWithString("module", "ALPHA").SetVerbose()}
 	if err := a.run(os.Stdin); err != nil {
-		log.Info("%s", err)
+		log.Warning().Msg(err.Error())
 	}
 }
 
@@ -53,7 +52,7 @@ type Alpha struct {
 }
 
 func (a *Alpha) run(r io.Reader) error {
-	a.Log.Verbose("Started module")
+	a.Log.Verbose().Msg("started module")
 
 	scan := bufio.NewScanner(r)
 
@@ -62,11 +61,6 @@ func (a *Alpha) run(r io.Reader) error {
 		request := &Request{
 			Log:   a.Log, // Usually a request can be logged at same level as module.
 			Query: scan.Text(),
-		}
-		if strings.HasPrefix(request.Query, "@") {
-			// For demonstration purposes, let's arbitrarily cause some of the
-			// events to be logged with tracers.
-			request.Log = request.Log.NewTracer(fmt.Sprintf("[REQUEST %s] ", request.Query))
 		}
 		request.Handle()
 	}
@@ -84,5 +78,5 @@ type Request struct {
 func (r *Request) Handle() {
 	// Anywhere in the call flow for the request, if it wants to log something,
 	// it should log to the Request's logger.
-	r.Log.Debug("handling request: %v", r.Query)
+	r.Log.Debug().String("query", r.Query).Msg("handling request")
 }
