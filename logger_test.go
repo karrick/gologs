@@ -42,10 +42,11 @@ func TestLogger(t *testing.T) {
 			Float("usage", 42.3).
 			Format("name", "%s %s", "First", "Last").
 			Int("age", 42).
+			Int64("i64", 42).
 			String("eye-color", "brown").
 			Msg("should log")
 
-		want := []byte("{\"time\":123456789,\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"eye-color\":\"brown\",\"message\":\"should log\"}\n")
+		want := []byte("{\"time\":123456789,\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"i64\":42,\"eye-color\":\"brown\",\"message\":\"should log\"}\n")
 
 		if got := bb.Bytes(); !bytes.Equal(got, want) {
 			t.Errorf("GOT: %q; WANT: %q", string(got), string(want))

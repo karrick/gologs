@@ -293,8 +293,20 @@ func (event *Event) Format(name, f string, args ...interface{}) *Event {
 	return event
 }
 
-// Int encodes a int64 property value to the Event using the specified name.
-func (event *Event) Int(name string, value int64) *Event {
+// Int encodes a int property value to the Event using the specified name.
+func (event *Event) Int(name string, value int) *Event {
+	if event == nil {
+		return nil
+	}
+	event.buf = appendEncodedJSONFromString(event.buf, name)
+	event.buf = append(event.buf, ':')
+	event.buf = strconv.AppendInt(event.buf, int64(value), 10)
+	event.buf = append(event.buf, ',')
+	return event
+}
+
+// Int64 encodes a int64 property value to the Event using the specified name.
+func (event *Event) Int64(name string, value int64) *Event {
 	if event == nil {
 		return nil
 	}
