@@ -333,19 +333,6 @@ func (event *Event) Int64(name string, value int64) *Event {
 	return event
 }
 
-// String encodes a string property value to the Event using the specified
-// name.
-func (event *Event) String(name, value string) *Event {
-	if event == nil {
-		return nil
-	}
-	event.buf = appendEncodedJSONFromString(event.buf, name)
-	event.buf = append(event.buf, ':')
-	event.buf = appendEncodedJSONFromString(event.buf, value)
-	event.buf = append(event.buf, ',')
-	return event
-}
-
 // Msg adds the specified message to the Event for the message property, and
 // writes the Event to Logger's io.Writer. The caller may provide an empty
 // string, which will elide inclusion of the message property in the written
@@ -369,6 +356,44 @@ func (event *Event) Msg(s string) error {
 
 	event.mutex.Unlock()
 	return err
+}
+
+// String encodes a string property value to the Event using the specified
+// name.
+func (event *Event) String(name, value string) *Event {
+	if event == nil {
+		return nil
+	}
+	event.buf = appendEncodedJSONFromString(event.buf, name)
+	event.buf = append(event.buf, ':')
+	event.buf = appendEncodedJSONFromString(event.buf, value)
+	event.buf = append(event.buf, ',')
+	return event
+}
+
+// Uint encodes a uint property value to the Event using the specified name.
+func (event *Event) Uint(name string, value uint) *Event {
+	if event == nil {
+		return nil
+	}
+	event.buf = appendEncodedJSONFromString(event.buf, name)
+	event.buf = append(event.buf, ':')
+	event.buf = strconv.AppendUint(event.buf, uint64(value), 10)
+	event.buf = append(event.buf, ',')
+	return event
+}
+
+// Uint64 encodes a uint64 property value to the Event using the specified
+// name.
+func (event *Event) Uint64(name string, value uint64) *Event {
+	if event == nil {
+		return nil
+	}
+	event.buf = appendEncodedJSONFromString(event.buf, name)
+	event.buf = append(event.buf, ':')
+	event.buf = strconv.AppendUint(event.buf, value, 10)
+	event.buf = append(event.buf, ',')
+	return event
 }
 
 // TimeUnix appends the current Unix second time to buf as a JSON property

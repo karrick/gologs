@@ -25,6 +25,8 @@ func TestLogger(t *testing.T) {
 			Format("name", "%s %s", "First", "Last").
 			Int("age", 42).
 			String("eye-color", "brown").
+			Uint("months", 123).
+			Uint64("days", 1234).
 			Msg("should not log")
 
 		ensureBytes(t, bb.Bytes(), nil)
@@ -49,9 +51,11 @@ func TestLogger(t *testing.T) {
 			Int("age", 42).
 			Int64("i64", 42).
 			String("eye-color", "brown").
+			Uint("months", 123).
+			Uint64("days", 1234).
 			Msg("should log")
 
-		want := []byte("{\"time\":123456789,\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"i64\":42,\"eye-color\":\"brown\",\"message\":\"should log\"}\n")
+		want := []byte("{\"time\":123456789,\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"i64\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n")
 
 		ensureBytes(t, bb.Bytes(), want)
 	})
@@ -186,7 +190,7 @@ func BenchmarkLogger(b *testing.B) {
 
 	b.Run("should log", func(b *testing.B) {
 		b.Run("without string formatting", func(b *testing.B) {
-			want := []byte("{\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"age\":42,\"eye-color\":\"brown\",\"message\":\"should log\"}\n")
+			want := []byte("{\"level\":\"debug\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"age\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n")
 
 			f.SetLevel(Debug)
 
@@ -197,6 +201,8 @@ func BenchmarkLogger(b *testing.B) {
 					Float("usage", 42.3).
 					Int("age", 42).
 					String("eye-color", "brown").
+					Uint("months", 123).
+					Uint64("days", 1234).
 					Msg("should log")
 
 				ensureBytes(b, bb.Bytes(), want)
@@ -206,7 +212,7 @@ func BenchmarkLogger(b *testing.B) {
 		})
 
 		b.Run("with string formatting", func(b *testing.B) {
-			want := []byte("{\"level\":\"info\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"eye-color\":\"brown\",\"message\":\"with string formatting\"}\n")
+			want := []byte("{\"level\":\"info\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"name\":\"First Last\",\"age\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"with string formatting\"}\n")
 
 			f.SetLevel(Debug)
 
@@ -218,6 +224,8 @@ func BenchmarkLogger(b *testing.B) {
 					Format("name", "%s %s", "First", "Last").
 					Int("age", 42).
 					String("eye-color", "brown").
+					Uint("months", 123).
+					Uint64("days", 1234).
 					Msg("with string formatting")
 
 				ensureBytes(b, bb.Bytes(), want)
