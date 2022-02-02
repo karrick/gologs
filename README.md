@@ -223,9 +223,6 @@ events to them.
     func example1() {
         // log defined as in previous examples...
         foo := &Foo{
-            // NOTE: the branch prefix has a trailing space in order to
-            // format nicely. You may prefer "FOO: " as your prefix, or
-            // even just "FOO:".
             log: log.NewBranchWithString("module","FOO"),
         }
         go foo.run()
