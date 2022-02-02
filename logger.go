@@ -263,6 +263,22 @@ func (event *Event) Bool(name string, value bool) *Event {
 	return event
 }
 
+// Err encodes a possibly nil error property value to the Event. When err is
+// nil, the error value is represented as a JSON null.
+func (event *Event) Err(err error) *Event {
+	if event == nil {
+		return nil
+	}
+	if err != nil {
+		event.buf = append(event.buf, []byte(`"error":`)...)
+		event.buf = appendEncodedJSONFromString(event.buf, err.Error())
+		event.buf = append(event.buf, ',')
+	} else {
+		event.buf = append(event.buf, []byte(`"error":null,`)...)
+	}
+	return event
+}
+
 // Float encodes a float64 property value to the Event using the specified
 // name.
 func (event *Event) Float(name string, value float64) *Event {
