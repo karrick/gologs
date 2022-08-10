@@ -124,7 +124,7 @@ formatting functions or a user specified time formatter.
     // Output:
     // {"time":1643776794592630092,"level":"info","message":"starting program"}
 
-    log4 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeRFC3339)
+    log4 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeFormat(time.RFC3339))
     log4.Info().Msg("started program")
     // Output:
     // {"time":"2022-08-06T15:14:04-04:00","level":"info","message":"starting program"}

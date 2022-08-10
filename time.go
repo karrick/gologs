@@ -13,12 +13,6 @@ func TimeFormat(format string) func([]byte) []byte {
 	}
 }
 
-// TimeRFC3339 appends the current time to buf as a JSON property name and
-// value.
-func TimeRFC3339(buf []byte) []byte {
-	return appendString(buf, "time", time.Now().Format(time.RFC3339))
-}
-
 // TimeUnix appends the current Unix second time to buf as a JSON property
 // name and value.
 func TimeUnix(buf []byte) []byte {

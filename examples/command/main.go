@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/karrick/gologs"
 )
@@ -29,7 +30,7 @@ func main() {
 		log.SetInfo()
 	}
 
-	log.SetTimeFormatter(gologs.TimeRFC3339)
+	log.SetTimeFormatter(gologs.TimeFormat(time.RFC3339))
 	// log.SetTimeFormatter(gologs.TimeFormat(time.Kitchen))
 
 	// For sake of example, invoke printSize with a child logger that includes
