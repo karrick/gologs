@@ -15,10 +15,10 @@ Why yet another logging library?
 1. This should be flexible enough to provide for use cases not
    originally envisioned, yet be easy enough to use to facilitate
    adoption. I should want to reach for this library for all my
-   logging needs, for both command line and long running daemons.
+   logging needs, for both command line and long running services.
 
 1. This should be lightweight. This should not spin up any go
-   routines. This should only allocate when creating a new logger, a
+   routines. This should only allocate when creating a new logger or a
    new log branch, or when the user specifically requires it by
    invoking the `Format` method. Events that do not get logged should
    not be formatted. This should not ask the OS for the system time if
@@ -63,27 +63,33 @@ func main() {
         log.SetInfo()
     }
 
-    // For sake of example, invoke printSize with a logger that includes the
-    // function name in the JSON properties of the log message.
-    pl := log.NewBranchWithString("function", "printSize")
+    // For sake of example, invoke printSize with a child logger that includes
+    // the function name in the JSON properties of the log message.
+    clog := log.With().String("function", "printSize").Logger()
 
     for _, arg := range flag.Args() {
+        // NOTE: Sends event to parent logger.
         log.Verbose().String("arg", arg).Msg("")
-        if err := printSize(pl, arg); err != nil {
-            log.Warning().Msg(err.Error())
+
+        // NOTE: Sends events to child logger.
+        if err := printSize(clog, arg); err != nil {
+            log.Warning().Err(err).Msg("")
         }
     }
 }
 
 func printSize(log *gologs.Logger, pathname string) error {
+    log.Debug().String("pathname", pathname).Msg("stat")
     stat, err := os.Stat(pathname)
     if err != nil {
         return err
     }
-    log.Debug().Int("size", int64(stat.Size())).Msg("")
+
+    size := stat.Size()
+    log.Debug().String("pathname", pathname).Int64("size", size).Msg("")
 
     if (stat.Mode() & os.ModeType) == 0 {
-        fmt.Printf("%s is %d bytes\n", pathname, stat.Size())
+        fmt.Printf("%s is %d bytes\n", pathname, size)
     }
 
     return nil
@@ -99,24 +105,34 @@ a trailing newline, and written to the underlying io.Writer. That
 io.Writer might be os.Stderr, or it might be a log rolling library,
 which in turn, is writting to a set of managed log files. The library
 provides a few time formatting functions, but the time is only
-included if the Logger is updated to either one of the provided time
-formatting functions or a user specified one.
+included when the Logger is updated to either one of the provided time
+formatting functions or a user specified time formatter.
 
 ```Go
     log1 := gologs.New(os.Stderr)
-    log1.Info().String("version", "3.14").Msg("started program")
+    log1.Info().Msg("started program")
     // Output:
-    // {"level":"info","version":"3.14","message":"starting program"}
+    // {"level":"info","message":"starting program"}
 
     log2 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeUnix)
-    log2.Info().String("version", ProgramVersion).Msg("started program")
+    log2.Info().Msg("started program")
     // Output:
-    // {"time":1643776764,"level":"info","version":"3.14","message":"starting program"}
+    // {"time":1643776764,"level":"info","message":"starting program"}
 
     log3 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeUnixNano)
-    log3.Info().String("version", ProgramVersion).Msg("started program")
+    log3.Info().Msg("started program")
     // Output:
-    // {"time":1643776794592630092,"level":"info","version":"3.14","message":"starting program"}
+    // {"time":1643776794592630092,"level":"info","message":"starting program"}
+
+    log4 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeRFC3339)
+    log4.Info().Msg("started program")
+    // Output:
+    // {"time":"2022-08-06T15:14:04-04:00","level":"info","message":"starting program"}
+
+    log5 := gologs.New(os.Stderr).SetTimeFormatter(gologs.TimeFormat(time.Kitchen))
+    log5.Info().Msg("started program")
+    // Output:
+    // {"time":"3:14PM","level":"info","message":"starting program"}
 ```
 
 ### Log Levels
@@ -176,7 +192,9 @@ This library allows this workflow by allowing a developer to create a
 tree of logs with multiple branches, and each branch can have an
 independently controlled log level. These log branches are
 lightweight, require no go routines to facilitate, and can even be
-ephemeral, and demonstrated later in the Tracer Logging section.
+ephemeral, and demonstrated later in the Tracer Logging
+section. Creating logger branches do allocate by copying the branch
+byte slice from the parent to the child branch.
 
 #### Base of the Tree
 
@@ -223,12 +241,12 @@ events to them.
     func example1() {
         // log defined as in previous examples...
         foo := &Foo{
-            log: log.NewBranchWithString("module","FOO"),
+            log: log.With().String("module","FOO").Logger(),
         }
         go foo.run()
 
         bar := &Bar{
-            log: log.NewBranchWithString("module","BAR"),
+            log: log.With().String("module","BAR").Logger(),
         }
         go bar.run()
     }
@@ -240,18 +258,9 @@ control its own log level. It is important that they use that logger
 to log all of their events during their lifetime, in order to be
 effective.
 
-It is possible to create a branch of a logger that does not have a
-prefix. In the below example, `log2` merely branches the logs so that
-the developer can independently control the log level of that
-particular branch of logs.
-
-```Go
-    log2 := log.NewBranch()
-```
-
 ### Tracer Logging
 
-I'm sure I'm not the only person who wanted to figure out why a
+I am sure I'm not the only person who wanted to figure out why a
 particular request or action was not working properly on a running
 service, decided to activate DEBUG log levels to watch the single
 request percolate through the service, to be reminded that the service
@@ -284,7 +293,7 @@ underlying io.Writer.
 
     func (f *Foo) NewRequest(query string) (*Request, error) {
         r := &Request{
-            log:   f.log.NewBranchWithString("request", query),
+            log:   f.log.With().String("request", query).Logger(),
             query: query,
         }
         if strings.HasSuffix(key, "*") {
@@ -313,8 +322,8 @@ Here's an example of what Tracer Loggers are trying to eliminate,
 assuming a hypothetical `Logging.Trace` method existed:
 
 ```Go
-    // Example of desired behavior without tracer logic. Each log line
-    // becomes a conditional.
+    // Counter example: desired behavior sans tracer logic. Each log line
+    // becomes a conditional, leading to code bloat.
     func (r *Request) Handler() {
         // It is inconvenient to branch log events each place you want to
         // emit a log event.
@@ -342,7 +351,7 @@ something requires it.
 ```Go
     func NewRequest(log *gologs.Logger, key string) (*Request, error) {
         r := &R{
-            log: log.NewBranchWithString("key", key),
+            log: log.With().String("key", key).Logger(),
             Key: key,
         }
         if strings.HasSuffix(key, "*") {

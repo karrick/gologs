@@ -29,27 +29,36 @@ func main() {
 		log.SetInfo()
 	}
 
-	// For sake of example, invoke printSize with a logger that includes the
-	// function name in the JSON properties of the log message.
-	pl := log.NewBranchWithString("function", "printSize")
+	log.SetTimeFormatter(gologs.TimeRFC3339)
+	// log.SetTimeFormatter(gologs.TimeFormat(time.Kitchen))
+
+	// For sake of example, invoke printSize with a child logger that includes
+	// the function name in the JSON properties of the log message.
+	clog := log.With().String("function", "printSize").Logger()
 
 	for _, arg := range flag.Args() {
+		// NOTE: Sends event to parent logger.
 		log.Verbose().String("arg", arg).Msg("")
-		if err := printSize(pl, arg); err != nil {
-			log.Warning().Msg(err.Error())
+
+		// NOTE: Sends events to child logger.
+		if err := printSize(clog, arg); err != nil {
+			log.Warning().Err(err).Msg("")
 		}
 	}
 }
 
 func printSize(log *gologs.Logger, pathname string) error {
+	log.Debug().String("pathname", pathname).Msg("stat")
 	stat, err := os.Stat(pathname)
 	if err != nil {
 		return err
 	}
-	log.Debug().Int("size", int64(stat.Size())).Msg("")
+
+	size := stat.Size()
+	log.Debug().String("pathname", pathname).Int64("size", size).Msg("")
 
 	if (stat.Mode() & os.ModeType) == 0 {
-		fmt.Printf("%s is %d bytes\n", pathname, stat.Size())
+		fmt.Printf("%s is %d bytes\n", pathname, size)
 	}
 
 	return nil

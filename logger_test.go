@@ -9,11 +9,11 @@ import (
 // panicyWriter is a test structure used for this test that optionally panics.
 type panicyWriter struct {
 	w           io.Writer
-	isTriggered bool
+	shouldPanic bool
 }
 
 func (pw *panicyWriter) Write(buf []byte) (int, error) {
-	if pw.isTriggered {
+	if pw.shouldPanic {
 		panic("writer-boom!")
 	}
 	return pw.w.Write(buf)
@@ -27,25 +27,29 @@ func TestLogger(t *testing.T) {
 		// either of those dependencies do panic.
 
 		t.Run("writer", func(t *testing.T) {
+			// Ensure properly handle when the io.Writer provided by the
+			// caller panics during a Write call.
 			bb := new(bytes.Buffer)
 			pw := &panicyWriter{w: bb}
 			log := New(pw).SetInfo()
 
-			log.Info().Msg("message 1")
+			log.Info().Msg("message 1") // should not panic
 
 			ensurePanic(t, "writer-boom!", func() {
-				pw.isTriggered = true
+				pw.shouldPanic = true
 				log.Info().Msg("message 2")
 			})
 
-			pw.isTriggered = false
-			log.Info().Msg("message 3")
+			pw.shouldPanic = false
+			log.Info().Msg("message 3") // should not panic
 
 			want := []byte("{\"level\":\"info\",\"message\":\"message 1\"}\n{\"level\":\"info\",\"message\":\"message 3\"}\n")
 			ensureBytes(t, bb.Bytes(), want)
 		})
 
 		t.Run("time formatter", func(t *testing.T) {
+			// Ensure properly handle when the time formatting function
+			// provided by the caller panics while formatting the event time.
 			bb := new(bytes.Buffer)
 			log := New(bb).SetInfo()
 
@@ -319,13 +323,16 @@ func TestLogger(t *testing.T) {
 {"level":"warning","module":"child2","message":"should be logged"}
 `,
 				func(l *Logger) {
-					parent := l.SetLevel(Debug)
+					// NOTE: The log level of parent can be overridden by its
+					// child branches. Set the parent to Error, and make sure
+					// derived loggers still emit events.
+					parent := l.SetError()
 
-					child1 := parent.NewBranchWithString("module", "child1").SetLevel(Verbose)
+					child1 := parent.With().String("module", "child1").Logger().SetLevel(Verbose)
 					child1.Debug().Msg("should not be logged")
 					child1.Verbose().Msg("should be logged")
 
-					child2 := parent.NewBranchWithString("module", "child2").SetLevel(Warning)
+					child2 := parent.With().String("module", "child2").Logger().SetLevel(Warning)
 					child2.Info().Msg("should not be logged")
 					child2.Warning().Msg("should be logged")
 				},
@@ -334,9 +341,11 @@ func TestLogger(t *testing.T) {
 				"branches have cascading properties",
 				"{\"level\":\"error\",\"module\":\"signals\",\"received\":\"term\",\"relay\":\"success\",\"float\":3.14}\n",
 				func(l *Logger) {
-					l.NewBranchWithString("module", "signals").
-						NewBranchWithString("received", "term").
-						NewBranchWithString("relay", "success").
+					l.With().
+						String("module", "signals").
+						String("received", "term").
+						String("relay", "success").
+						Logger().
 						Error().Float("float", 3.14).Msg("")
 				},
 			},
@@ -346,12 +355,15 @@ func TestLogger(t *testing.T) {
 				"all events logged when tracer is true",
 				"{\"level\":\"verbose\",\"first\":\"first\",\"second\":\"second\",\"string\":\"hello\",\"float\":3.14}\n",
 				func(l *Logger) {
-					l = l.SetError().
-						NewBranchWithString("first", "first").
-						NewBranchWithString("second", "second").
+					l = l.With().
+						String("first", "first").
+						String("second", "second").
+						Logger().
+						SetError().
 						SetTracing(true)
-					// Normally a verbose message would not get through a logger whose
-					// level is Error, however, this logger has its tracing bit set.
+					// Normally a verbose message would not get through a
+					// logger whose level is Error, however, this logger has
+					// its tracing bit set.
 					l.Verbose().String("string", "hello").Float("float", 3.14).Msg("")
 				},
 			},
@@ -380,7 +392,7 @@ func BenchmarkLogger(b *testing.B) {
 	})
 
 	b.Run("should log", func(b *testing.B) {
-		b.Run("without string formatting", func(b *testing.B) {
+		b.Run("sans string formatting", func(b *testing.B) {
 			want := []byte("{\"level\":\"warning\",\"happy\":true,\"sad\":false,\"usage\":42.3,\"age\":42,\"eye-color\":\"brown\",\"months\":123,\"days\":1234,\"message\":\"should log\"}\n")
 
 			for i := 0; i < b.N; i++ {
@@ -406,7 +418,7 @@ func BenchmarkLogger(b *testing.B) {
 					Bool("happy", true).
 					Bool("sad", false).
 					Float("usage", 42.3).
-					Format("name", "%s %s", "First", "Last").
+					Format("name", "%s %s", "First", "Last"). // NOTE: While formatting is not slow, it does require allocation.
 					Int("age", 42).
 					String("eye-color", "brown").
 					Uint("months", 123).
