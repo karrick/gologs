@@ -17,6 +17,17 @@ type Event struct {
 	mutex         sync.Mutex // mutex for scratch and timeFormatter
 }
 
+func (event *Event) log(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
+
 func (event *Event) debug(branch []byte) *Event {
 	event.mutex.Lock() // unlocked inside Event.Msg()
 	if event.timeFormatter != nil && event.formatTimePanics() {

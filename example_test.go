@@ -18,6 +18,8 @@ func ExampleLogger() {
 
 	log.Verbose().Msg("initializing program")
 
+	log.Log().String("foo", "bar").Msg("")
+
 	// When creating structure instances, consider sending the log instance to
 	// the structure's constructor so it can prefix its log messages
 	// accordingly. This is especially useful when the instantiated structure
@@ -45,6 +47,7 @@ func ExampleLogger() {
 
 	// Output:
 	// {"level":"verbose","message":"initializing program"}
+	// {"foo":"bar"}
 	// {"level":"verbose","message":"Enter NewServer()"}
 	// {"level":"verbose","structure":"Server","message":"Enter Server.run()"}
 	// {"level":"verbose","structure":"Server","method":"run","message":"starting loop"}

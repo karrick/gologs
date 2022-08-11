@@ -97,6 +97,13 @@ func (log *Logger) SetTimeFormatter(callback TimeFormatter) *Logger {
 	return log
 }
 
+// Log returns an Event to be formatted and sent to the Logger's underlying
+// io.Writer, regardless of the Logger's log level, and omitting the event log
+// level in the output.
+func (log *Logger) Log() *Event {
+	return log.event.log(log.branch)
+}
+
 // Debug returns an Event to be formatted and sent to the Logger's underlying
 // io.Writer when the Logger's level is Debug. If the Logger's level is above
 // Debug, this method returns without blocking.
