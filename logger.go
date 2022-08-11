@@ -226,6 +226,12 @@ func (log *Logger) Error() *Event {
 	return &log.event
 }
 
+// NewWriter creates an io.Writer that conveys all writes it receives to the
+// underlying io.Writer as individual log events.
+func (log *Logger) NewWriter() *Writer {
+	return log.event.newWriter()
+}
+
 // With returns an Intermediate Logger instance that inherits from log, but
 // can be modified to add one or more additional properties for every outgoing
 // log event. Callers never need to create an Intermediate Logger

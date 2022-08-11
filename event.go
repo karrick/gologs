@@ -36,6 +36,27 @@ func (event *Event) newIntermediate() *Intermediate {
 	return il
 }
 
+// Only called by Logger, but logic is here because event needs to manage its
+// locks.
+func (event *Event) newWriter() *Writer {
+	event.mutex.RLock()
+
+	w := &Writer{
+		event: Event{
+			branch:        make([]byte, len(event.branch), cap(event.branch)),
+			scratch:       make([]byte, 1, 4096),
+			timeFormatter: event.timeFormatter,
+			output:        event.output,
+			level:         atomic.LoadUint32((*uint32)(&event.level)),
+		},
+	}
+	copy(w.event.branch, event.branch)
+	w.event.scratch[0] = '{'
+
+	event.mutex.RUnlock()
+	return w
+}
+
 // Bool encodes a boolean property value to the Event using the specified
 // name.
 func (event *Event) Bool(name string, value bool) *Event {
