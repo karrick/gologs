@@ -5,9 +5,11 @@ import (
 	"time"
 )
 
+type TimeFormatter func([]byte) []byte
+
 // TimeFormat returns a time formatter that appends the current time to buf as
 // a JSON property name and value using the specified string format.
-func TimeFormat(format string) func([]byte) []byte {
+func TimeFormat(format string) TimeFormatter {
 	return func(buf []byte) []byte {
 		return appendString(buf, "time", time.Now().Format(format))
 	}

@@ -358,9 +358,9 @@ func TestLogger(t *testing.T) {
 					l = l.With().
 						String("first", "first").
 						String("second", "second").
+						Tracing(true).
 						Logger().
-						SetError().
-						SetTracing(true)
+						SetError()
 					// Normally a verbose message would not get through a
 					// logger whose level is Error, however, this logger has
 					// its tracing bit set.

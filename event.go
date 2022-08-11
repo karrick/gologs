@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 )
 
 // Event is an in progress log event being formatted before it is written upon
@@ -12,53 +11,104 @@ import (
 // specifically, but rather receive an Event from calling Debug(), Verbose(),
 // Info(), Warning(), or Error() methods of Logger instance.
 type Event struct {
-	branch        []byte // branch holds prefix of each log event
 	scratch       []byte // scratch is where new log events are built
-	timeFormatter func([]byte) []byte
+	timeFormatter TimeFormatter
 	output        *output
-	mutex         sync.RWMutex
-	level         uint32
-	isTracer      uint32
+	mutex         sync.Mutex // mutex for scratch and timeFormatter
 }
 
-// Only called by Logger, but logic is here because event needs to manage its
-// locks.
-func (event *Event) newIntermediate() *Intermediate {
-	event.mutex.RLock()
-
-	il := &Intermediate{
-		branch:        make([]byte, len(event.branch), cap(event.branch)),
-		timeFormatter: event.timeFormatter,
-		output:        event.output,
-		level:         atomic.LoadUint32((*uint32)(&event.level)),
+func (event *Event) debug(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
 	}
-
-	copy(il.branch, event.branch)
-
-	event.mutex.RUnlock()
-	return il
+	event.scratch = append(event.scratch, []byte("\"level\":\"debug\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
 }
 
-// Only called by Logger, but logic is here because event needs to manage its
-// locks.
-func (event *Event) newWriter() *Writer {
-	event.mutex.RLock()
-
-	w := &Writer{
-		event: Event{
-			branch:        make([]byte, len(event.branch), cap(event.branch)),
-			scratch:       make([]byte, 1, 4096),
-			timeFormatter: event.timeFormatter,
-			output:        event.output,
-			level:         atomic.LoadUint32((*uint32)(&event.level)),
-		},
+func (event *Event) verbose(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
 	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"verbose\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
 
-	copy(w.event.branch, event.branch)
-	w.event.scratch[0] = '{'
+func (event *Event) info(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"info\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
 
-	event.mutex.RUnlock()
-	return w
+func (event *Event) warning(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"warning\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
+
+func (event *Event) error(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"error\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
+
+// formatTimePanics attempts to format the time using the stored time
+// formatting callback function. When the function does not panic, it returns
+// false. When the function does panic, it returns true so the Logger method
+// can stop processing the provided event.
+func (event *Event) formatTimePanics() (panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			var err error
+			switch t := r.(type) {
+			case error:
+				err = t
+			case string:
+				err = errors.New(t)
+			default:
+				err = fmt.Errorf("%v", t)
+			}
+			event.scratch = event.scratch[:1] // erase all but prefix '{'
+			event.Err(err).Msg("panic when time formatter invoked")
+			panicked = true
+		}
+	}()
+	event.scratch = event.timeFormatter(event.scratch)
+	return
+}
+
+// setTimeFormatter updates the time formatting callback function that is
+// invoked for every log message while it is being formatted, potentially
+// blocking until any in progress log event has been written.
+func (event *Event) setTimeFormatter(callback TimeFormatter) {
+	event.mutex.Lock()
+	event.timeFormatter = callback
+	event.mutex.Unlock()
 }
 
 // Bool encodes a boolean property value to the Event using the specified
@@ -187,120 +237,4 @@ func (event *Event) Uint64(name string, value uint64) *Event {
 	}
 	event.scratch = appendUint(event.scratch, name, value)
 	return event
-}
-
-func (event *Event) debug() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&event.level))) > Debug &&
-		atomic.LoadUint32((*uint32)(&event.isTracer)) == 0 {
-		return nil
-	}
-	event.mutex.Lock() // unlocked inside Event.Msg()
-	if event.timeFormatter != nil && event.formatTimePanics() {
-		return nil
-	}
-	event.scratch = append(event.scratch, []byte("\"level\":\"debug\",")...)
-	if event.branch != nil {
-		event.scratch = append(event.scratch, event.branch...)
-	}
-	return event
-}
-
-func (event *Event) verbose() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&event.level))) > Verbose &&
-		atomic.LoadUint32((*uint32)(&event.isTracer)) == 0 {
-		return nil
-	}
-	event.mutex.Lock() // unlocked inside Event.Msg()
-	if event.timeFormatter != nil && event.formatTimePanics() {
-		return nil
-	}
-	event.scratch = append(event.scratch, []byte("\"level\":\"verbose\",")...)
-	if event.branch != nil {
-		event.scratch = append(event.scratch, event.branch...)
-	}
-	return event
-}
-
-func (event *Event) info() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&event.level))) > Info &&
-		atomic.LoadUint32((*uint32)(&event.isTracer)) == 0 {
-		return nil
-	}
-	event.mutex.Lock() // unlocked inside Event.Msg()
-	if event.timeFormatter != nil && event.formatTimePanics() {
-		return nil
-	}
-	event.scratch = append(event.scratch, []byte("\"level\":\"info\",")...)
-	if event.branch != nil {
-		event.scratch = append(event.scratch, event.branch...)
-	}
-	return event
-}
-
-func (event *Event) warning() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&event.level))) > Warning &&
-		atomic.LoadUint32((*uint32)(&event.isTracer)) == 0 {
-		return nil
-	}
-	event.mutex.Lock() // unlocked inside Event.Msg()
-	if event.timeFormatter != nil && event.formatTimePanics() {
-		return nil
-	}
-	event.scratch = append(event.scratch, []byte("\"level\":\"warning\",")...)
-	if event.branch != nil {
-		event.scratch = append(event.scratch, event.branch...)
-	}
-	return event
-}
-
-func (event *Event) error() *Event {
-	event.mutex.Lock() // unlocked inside Event.Msg()
-	if event.timeFormatter != nil && event.formatTimePanics() {
-		return nil
-	}
-	event.scratch = append(event.scratch, []byte("\"level\":\"error\",")...)
-	if event.branch != nil {
-		event.scratch = append(event.scratch, event.branch...)
-	}
-	return event
-}
-
-// formatTimePanics attempts to format the time using the stored time
-// formatting callback function. When the function does not panic, it returns
-// false. When the function does panic, it returns true so the Logger method
-// can stop processing the provided event.
-func (event *Event) formatTimePanics() (panicked bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			var err error
-			switch t := r.(type) {
-			case error:
-				err = t
-			case string:
-				err = errors.New(t)
-			default:
-				err = fmt.Errorf("%v", t)
-			}
-			event.scratch = event.scratch[:1] // erase all but prefix '{'
-			event.Err(err).Msg("panic when time formatter invoked")
-			panicked = true
-		}
-	}()
-	event.scratch = event.timeFormatter(event.scratch)
-	return
-}
-
-// setTimeFormatter updates the time formatting callback function that is
-// invoked for every log message while it is being formatted, potentially
-// blocking until any in progress log event has been written.
-func (event *Event) setTimeFormatter(callback func([]byte) []byte) {
-	event.mutex.Lock()
-	event.timeFormatter = callback
-	event.mutex.Unlock()
-}
-
-// setLevel changes the Logger's level to the specified Level without
-// blocking.
-func (event *Event) setLevel(level Level) {
-	atomic.StoreUint32((*uint32)(&event.level), uint32(level))
 }

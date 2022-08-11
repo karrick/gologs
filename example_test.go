@@ -27,9 +27,12 @@ func ExampleLogger() {
 	s.run([]string{"one=1", "@two=2", "three=3", "@four=4"})
 
 	// Create an io.Writer that conveys all writes it receives to the
-	// underlying io.Writer as individual log events.
-	w := log.SetInfo().NewWriter()
-	for _, line := range []string{"line 1\n", "line 2\n"} {
+	// underlying io.Writer as individual log events. NOTE: This logger will
+	// not emit the first event, but inside the loop below the Writer's log
+	// level is changed, such that follow on events are emitted.
+	w := log.SetWarning().NewWriter(Info)
+
+	for _, line := range []string{"line 1\n", "line 2\n", "line 3\n"} {
 		n, err := w.Write([]byte(line))
 		if got, want := n, len(line); got != want {
 			log.Warning().Int("got", got).Int("want", want).Msg("bytes written mismatch")
@@ -37,6 +40,7 @@ func ExampleLogger() {
 		if err != nil {
 			log.Warning().Err(err).Msg("error during write")
 		}
+		w.SetInfo()
 	}
 
 	// Output:
@@ -44,8 +48,8 @@ func ExampleLogger() {
 	// {"level":"verbose","message":"Enter NewServer()"}
 	// {"level":"verbose","structure":"Server","message":"Enter Server.run()"}
 	// {"level":"verbose","structure":"Server","method":"run","message":"starting loop"}
-	// {"level":"info","message":"line 1\n"}
 	// {"level":"info","message":"line 2\n"}
+	// {"level":"info","message":"line 3\n"}
 }
 
 type Server struct {
