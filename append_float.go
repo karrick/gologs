@@ -7,11 +7,11 @@ import (
 	"strconv"
 )
 
-// AppendEncodedJSONFromFloat appends the JSON encoded form of the value to the
-// provided byte slice. Because some legal IEEE 754 floating point values have
-// no JSON equivalents, this library encodes several floating point numbers into
-// the corresponding encoded form, as used by several other JSON encoding
-// libraries, as shown in the table below.
+// appendEncodedJSONFromFloat appends the JSON encoded form of the value to
+// the provided byte slice. Because some legal IEEE 754 floating point values
+// have no JSON equivalents, this library encodes several floating point
+// numbers into the corresponding encoded form, as used by several other JSON
+// encoding libraries, as shown in the table below.
 //
 // JSON serialization:
 //    NaN: null

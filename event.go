@@ -1,8 +1,9 @@
 package gologs
 
 import (
+	"errors"
+	"fmt"
 	"sync"
-	"sync/atomic"
 )
 
 // Event is an in progress log event being formatted before it is written upon
@@ -10,30 +11,104 @@ import (
 // specifically, but rather receive an Event from calling Debug(), Verbose(),
 // Info(), Warning(), or Error() methods of Logger instance.
 type Event struct {
-	branch        []byte // branch holds prefix of each log event
 	scratch       []byte // scratch is where new log events are built
-	timeFormatter func([]byte) []byte
+	timeFormatter TimeFormatter
 	output        *output
-	mutex         sync.RWMutex
-	level         uint32
-	isTracer      uint32
+	mutex         sync.Mutex // mutex for scratch and timeFormatter
 }
 
-// Only called by Logger, but logic is here because event needs to manage its
-// locks.
-func (event *Event) newIntermediate() *Intermediate {
-	event.mutex.RLock()
-
-	il := &Intermediate{
-		branch:        make([]byte, len(event.branch), cap(event.branch)),
-		timeFormatter: event.timeFormatter,
-		output:        event.output,
-		level:         atomic.LoadUint32((*uint32)(&event.level)),
+func (event *Event) debug(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
 	}
-	copy(il.branch, event.branch)
+	event.scratch = append(event.scratch, []byte("\"level\":\"debug\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
 
-	event.mutex.RUnlock()
-	return il
+func (event *Event) verbose(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"verbose\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
+
+func (event *Event) info(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"info\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
+
+func (event *Event) warning(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"warning\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
+
+func (event *Event) error(branch []byte) *Event {
+	event.mutex.Lock() // unlocked inside Event.Msg()
+	if event.timeFormatter != nil && event.formatTimePanics() {
+		return nil
+	}
+	event.scratch = append(event.scratch, []byte("\"level\":\"error\",")...)
+	if len(branch) > 0 {
+		event.scratch = append(event.scratch, branch...)
+	}
+	return event
+}
+
+// formatTimePanics attempts to format the time using the stored time
+// formatting callback function. When the function does not panic, it returns
+// false. When the function does panic, it returns true so the Logger method
+// can stop processing the provided event.
+func (event *Event) formatTimePanics() (panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			var err error
+			switch t := r.(type) {
+			case error:
+				err = t
+			case string:
+				err = errors.New(t)
+			default:
+				err = fmt.Errorf("%v", t)
+			}
+			event.scratch = event.scratch[:1] // erase all but prefix '{'
+			event.Err(err).Msg("panic when time formatter invoked")
+			panicked = true
+		}
+	}()
+	event.scratch = event.timeFormatter(event.scratch)
+	return
+}
+
+// setTimeFormatter updates the time formatting callback function that is
+// invoked for every log message while it is being formatted, potentially
+// blocking until any in progress log event has been written.
+func (event *Event) setTimeFormatter(callback TimeFormatter) {
+	event.mutex.Lock()
+	event.timeFormatter = callback
+	event.mutex.Unlock()
 }
 
 // Bool encodes a boolean property value to the Event using the specified

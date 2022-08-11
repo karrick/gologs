@@ -29,6 +29,13 @@ Why yet another logging library?
 
 [![GoDoc](https://godoc.org/github.com/karrick/gologs?status.svg)](https://godoc.org/github.com/karrick/gologs)
 
+## Compliments
+
+A while ago I significantly altered the API of this library based on
+the amazing [zerolog](https://github.com/rs/zerolog) library. I hope
+the authors of that library have heard the expression that imitation
+is the most sincere form of flattery.
+
 ## Usage Example
 
 ```Go
@@ -350,12 +357,13 @@ something requires it.
 
 ```Go
     func NewRequest(log *gologs.Logger, key string) (*Request, error) {
+        log = log.With().
+            String("key", key).
+            Tracing(strings.HasSuffix(key, "*")).
+            Logger()
         r := &R{
-            log: log.With().String("key", key).Logger(),
+            log: log,
             Key: key,
-        }
-        if strings.HasSuffix(key, "*") {
-            r.log.SetTracing(true)
         }
         return r, nil
     }
