@@ -1,8 +1,6 @@
 package gologs
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"sync/atomic"
 )
@@ -45,14 +43,14 @@ func (log *Logger) SetWriter(w io.Writer) *Logger {
 // SetLevel changes the Logger's level to the specified Level without
 // blocking.
 func (log *Logger) SetLevel(level Level) *Logger {
-	atomic.StoreUint32((*uint32)(&log.event.level), uint32(level))
+	log.event.setLevel(level)
 	return log
 }
 
 // SetDebug changes the Logger's level to Debug, which allows all events to be
 // logged. The change is made without blocking.
 func (log *Logger) SetDebug() *Logger {
-	atomic.StoreUint32((*uint32)(&log.event.level), uint32(Debug))
+	log.event.setLevel(Debug)
 	return log
 }
 
@@ -60,7 +58,7 @@ func (log *Logger) SetDebug() *Logger {
 // events to be ignored, and all Verbose, Info, Warning, and Error events to
 // be logged. The change is made without blocking.
 func (log *Logger) SetVerbose() *Logger {
-	atomic.StoreUint32((*uint32)(&log.event.level), uint32(Verbose))
+	log.event.setLevel(Verbose)
 	return log
 }
 
@@ -69,7 +67,7 @@ func (log *Logger) SetVerbose() *Logger {
 // logged. The change is made without blocking. The change is made without
 // blocking.
 func (log *Logger) SetInfo() *Logger {
-	atomic.StoreUint32((*uint32)(&log.event.level), uint32(Info))
+	log.event.setLevel(Info)
 	return log
 }
 
@@ -77,7 +75,7 @@ func (log *Logger) SetInfo() *Logger {
 // Verbose, and Info events to be ignored, and all Warning, and Error events
 // to be logged. The change is made without blocking.
 func (log *Logger) SetWarning() *Logger {
-	atomic.StoreUint32((*uint32)(&log.event.level), uint32(Warning))
+	log.event.setLevel(Warning)
 	return log
 }
 
@@ -85,7 +83,7 @@ func (log *Logger) SetWarning() *Logger {
 // Verbose, Info, and Warning events to be ignored, and all Error events to be
 // logged. The change is made without blocking.
 func (log *Logger) SetError() *Logger {
-	atomic.StoreUint32((*uint32)(&log.event.level), uint32(Error))
+	log.event.setLevel(Error)
 	return log
 }
 
@@ -93,9 +91,7 @@ func (log *Logger) SetError() *Logger {
 // invoked for every log message while it is being formatted, potentially
 // blocking until any in progress log event has been written.
 func (log *Logger) SetTimeFormatter(callback func([]byte) []byte) *Logger {
-	log.event.mutex.Lock()
-	log.event.timeFormatter = callback
-	log.event.mutex.Unlock()
+	log.event.setTimeFormatter(callback)
 	return log
 }
 
@@ -110,86 +106,25 @@ func (log *Logger) SetTracing(enabled bool) *Logger {
 	return log
 }
 
-// formatTimePanics attempts to format the time using the stored time
-// formatting callback function. When the function does not panic, it returns
-// false. When the function does panic, it returns true so the Logger method
-// can stop processing the provided event.
-func (log *Logger) formatTimePanics() (panicked bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			var err error
-			switch t := r.(type) {
-			case error:
-				err = t
-			case string:
-				err = errors.New(t)
-			default:
-				err = fmt.Errorf("%v", t)
-			}
-			log.event.scratch = log.event.scratch[:1] // erase all but prefix '{'
-			log.event.Err(err).Msg("panic when time formatter invoked")
-			panicked = true
-		}
-	}()
-	log.event.scratch = log.event.timeFormatter(log.event.scratch)
-	return
-}
-
 // Debug returns an Event to be formatted and sent to the Logger's underlying
 // io.Writer when the Logger's level is Debug. If the Logger's level is above
 // Debug, this method returns without blocking.
 func (log *Logger) Debug() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Debug &&
-		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
-		return nil
-	}
-	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.timeFormatter != nil && log.formatTimePanics() {
-		return nil
-	}
-	log.event.scratch = append(log.event.scratch, []byte("\"level\":\"debug\",")...)
-	if log.event.branch != nil {
-		log.event.scratch = append(log.event.scratch, log.event.branch...)
-	}
-	return &log.event
+	return log.event.debug()
 }
 
 // Verbose returns an Event to be formatted and sent to the Logger's
 // underlying io.Writer when the Logger's level is Debug or Verbose. If the
 // Logger's level is above Verbose, this method returns without blocking.
 func (log *Logger) Verbose() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Verbose &&
-		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
-		return nil
-	}
-	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.timeFormatter != nil && log.formatTimePanics() {
-		return nil
-	}
-	log.event.scratch = append(log.event.scratch, []byte("\"level\":\"verbose\",")...)
-	if log.event.branch != nil {
-		log.event.scratch = append(log.event.scratch, log.event.branch...)
-	}
-	return &log.event
+	return log.event.verbose()
 }
 
 // Info returns an Event to be formatted and sent to the Logger's underlying
 // io.Writer when the Logger's level is Debug, Verbose, or Info. If the
 // Logger's level is above Info, this method returns without blocking.
 func (log *Logger) Info() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Info &&
-		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
-		return nil
-	}
-	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.timeFormatter != nil && log.formatTimePanics() {
-		return nil
-	}
-	log.event.scratch = append(log.event.scratch, []byte("\"level\":\"info\",")...)
-	if log.event.branch != nil {
-		log.event.scratch = append(log.event.scratch, log.event.branch...)
-	}
-	return &log.event
+	return log.event.info()
 }
 
 // Warning returns an Event to be formatted and sent to the Logger's
@@ -197,33 +132,13 @@ func (log *Logger) Info() *Event {
 // Warning. If the Logger's level is above Warning, this method returns
 // without blocking.
 func (log *Logger) Warning() *Event {
-	if Level(atomic.LoadUint32((*uint32)(&log.event.level))) > Warning &&
-		atomic.LoadUint32((*uint32)(&log.event.isTracer)) == 0 {
-		return nil
-	}
-	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.timeFormatter != nil && log.formatTimePanics() {
-		return nil
-	}
-	log.event.scratch = append(log.event.scratch, []byte("\"level\":\"warning\",")...)
-	if log.event.branch != nil {
-		log.event.scratch = append(log.event.scratch, log.event.branch...)
-	}
-	return &log.event
+	return log.event.warning()
 }
 
 // Error returns an Event to be formatted and sent to the Logger's underlying
 // io.Writer.
 func (log *Logger) Error() *Event {
-	log.event.mutex.Lock() // unlocked inside Event.Msg()
-	if log.event.timeFormatter != nil && log.formatTimePanics() {
-		return nil
-	}
-	log.event.scratch = append(log.event.scratch, []byte("\"level\":\"error\",")...)
-	if log.event.branch != nil {
-		log.event.scratch = append(log.event.scratch, log.event.branch...)
-	}
-	return &log.event
+	return log.event.error()
 }
 
 // NewWriter creates an io.Writer that conveys all writes it receives to the
