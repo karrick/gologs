@@ -1,4 +1,4 @@
-module github.com/karrick/gologs/bench
+module github.com/karrick/gologs/bench/main
 
 go 1.18
 

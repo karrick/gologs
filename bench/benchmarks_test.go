@@ -1,7 +1,8 @@
-package bench
+package main
 
 import (
 	"io/ioutil"
+	_ "net/http/pprof"
 	"testing"
 	"time"
 
@@ -9,135 +10,159 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const fakeMessage = "Test logging, but use a somewhat realistic message length."
-
-func BenchmarkLogEmpty(b *testing.B) {
-	b.Run("gologs", func(b *testing.B) {
-		logger := gologs.New(ioutil.Discard)
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Log().Msg("")
-			}
-		})
-	})
-
-	b.Run("zerolog", func(b *testing.B) {
-		logger := zerolog.New(ioutil.Discard)
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Log().Msg("")
-			}
-		})
+func BenchmarkLogEmptyGologs(b *testing.B) {
+	logger := gologs.New(ioutil.Discard)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		logger = logger.With().Logger()
+		for pb.Next() {
+			logger.Log().Msg("")
+		}
 	})
 }
 
-func BenchmarkLogDisabled(b *testing.B) {
-	b.Run("gologs", func(b *testing.B) {
-		logger := gologs.New(ioutil.Discard).SetError()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().Msg(fakeMessage)
-			}
-		})
-	})
-
-	b.Run("zerolog", func(b *testing.B) {
-		logger := zerolog.New(ioutil.Discard).Level(zerolog.Disabled)
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().Msg(fakeMessage)
-			}
-		})
+func BenchmarkLogEmptyZerolog(b *testing.B) {
+	logger := zerolog.New(ioutil.Discard)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Log().Msg("")
+		}
 	})
 }
 
-func BenchmarkLogInfo(b *testing.B) {
-	b.Run("gologs", func(b *testing.B) {
-		logger := gologs.New(ioutil.Discard).SetInfo()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().Msg(fakeMessage)
-			}
-		})
-	})
-
-	b.Run("zerolog", func(b *testing.B) {
-		logger := zerolog.New(ioutil.Discard)
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().Msg(fakeMessage)
-			}
-		})
+func BenchmarkLogDisabledGologs(b *testing.B) {
+	logger := gologs.New(ioutil.Discard).SetError()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		logger = logger.With().Logger()
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
 	})
 }
 
-func BenchmarkContextFields(b *testing.B) {
-	b.Run("gologs", func(b *testing.B) {
-		logger := gologs.New(ioutil.Discard).SetInfo().
-			SetTimeFormatter(gologs.TimeUnix).
-			With().
+func BenchmarkLogDisabledZerolog(b *testing.B) {
+	logger := zerolog.New(ioutil.Discard).Level(zerolog.Disabled)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkLogInfoGologs(b *testing.B) {
+	logger := gologs.New(ioutil.Discard).SetInfo()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		logger = logger.With().Logger()
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkLogInfoZerolog(b *testing.B) {
+	logger := zerolog.New(ioutil.Discard)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkContextFieldsGologs(b *testing.B) {
+	logger := gologs.New(ioutil.Discard).SetInfo().
+		SetTimeFormatter(gologs.TimeUnix).
+		With().
+		String("string", "four!").
+		Int("int", 123).
+		Float("float", -2.203230293249593).
+		Logger()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		logger = logger.With().Logger()
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkContextFieldsZerolog(b *testing.B) {
+	logger := zerolog.New(ioutil.Discard).
+		With().
+		Str("string", "four!").
+		Time("time", time.Time{}).
+		Int("int", 123).
+		Float32("float", -2.203230293249593).
+		Logger()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info().Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkLogFieldsGologs(b *testing.B) {
+	logger := gologs.New(ioutil.Discard).
+		SetTimeFormatter(gologs.TimeUnix).
+		SetInfo()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		logger = logger.With().Logger()
+		for pb.Next() {
+			logger.Info().
+				String("string", "four!").
+				Int("int", 123).
+				Float("float", -2.203230293249593).
+				Msg(fakeMessage)
+		}
+	})
+}
+
+func BenchmarkLogFieldsZerolog(b *testing.B) {
+	logger := zerolog.New(ioutil.Discard)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info().
+				Str("string", "four!").
+				Time("time", time.Time{}).
+				Int("int", 123).
+				Float32("float", -2.203230293249593).
+				Msg(fakeMessage)
+		}
+	})
+}
+
+var flameIterations = 10000000
+
+func BenchmarkFlamegraphGologs(b *testing.B) {
+	logger := gologs.New(ioutil.Discard).
+		SetTimeFormatter(gologs.TimeUnix).
+		SetInfo()
+
+	for i := 0; i < flameIterations; i++ {
+		logger.Info().
 			String("string", "four!").
 			Int("int", 123).
 			Float("float", -2.203230293249593).
-			Logger()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().Msg(fakeMessage)
-			}
-		})
-	})
-
-	b.Run("zerolog", func(b *testing.B) {
-		logger := zerolog.New(ioutil.Discard).
-			With().
-			Str("string", "four!").
-			Time("time", time.Time{}).
-			Int("int", 123).
-			Float32("float", -2.203230293249593).
-			Logger()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().Msg(fakeMessage)
-			}
-		})
-	})
+			Msg(fakeMessage)
+	}
 }
 
-func BenchmarkLogFields(b *testing.B) {
-	b.Run("gologs", func(b *testing.B) {
-		logger := gologs.New(ioutil.Discard).SetInfo().SetTimeFormatter(gologs.TimeUnix)
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().
-					String("string", "four!").
-					Int("int", 123).
-					Float("float", -2.203230293249593).
-					Msg(fakeMessage)
-			}
-		})
-	})
+func BenchmarkFlamegraphZerolog(b *testing.B) {
+	logger := zerolog.New(ioutil.Discard)
 
-	b.Run("zerolog", func(b *testing.B) {
-		logger := zerolog.New(ioutil.Discard)
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				logger.Info().
-					Str("string", "four!").
-					Time("time", time.Time{}).
-					Int("int", 123).
-					Float32("float", -2.203230293249593).
-					Msg(fakeMessage)
-			}
-		})
-	})
+	for i := 0; i < flameIterations; i++ {
+		logger.Info().
+			Str("string", "four!").
+			Time("time", time.Now()).
+			Int("int", 123).
+			Float32("float", -2.203230293249593).
+			Msg(fakeMessage)
+	}
 }
