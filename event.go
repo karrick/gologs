@@ -231,6 +231,23 @@ func (event *Event) String(name, value string) *Event {
 	return event
 }
 
+// Stringer encodes the return value of a Stringer to the Event as a property
+// value using the specified name. This method will result in allocation
+// if and only if the Event will be logged.
+//
+// To reduce program allocations, prefer this:
+//     logger.Debug().Stringer("address", address).Msg("listening")
+//
+// Rather than this:
+//     logger.Debug().String("address", address.String()).Msg("listening")
+func (event *Event) Stringer(name string, stringer interface{String() string}) *Event {
+	if event == nil {
+		return nil
+	}
+	event.scratch = appendString(event.scratch, name, stringer.String())
+	return event
+}
+
 // Uint encodes a uint property value to the Event using the specified name.
 func (event *Event) Uint(name string, value uint) *Event {
 	if event == nil {
