@@ -72,7 +72,7 @@ func TestString(t *testing.T) {
 	stringEnsureGood(t, "ab", "\"ab\"")
 	stringEnsureGood(t, "a\"b", "\"a\\\"b\"")
 	stringEnsureGood(t, "a\\b", "\"a\\\\b\"")
-	stringEnsureGood(t, "a/b", "\"a\\/b\"")
+	stringEnsureGood(t, "a/b", "\"a/b\"")
 
 	stringEnsureGood(t, "a\bb", `"a\bb"`)
 	stringEnsureGood(t, "a\fb", `"a\fb"`)

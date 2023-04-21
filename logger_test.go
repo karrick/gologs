@@ -303,14 +303,14 @@ func TestLogger(t *testing.T) {
 			// errors
 			{
 				"error is nil",
-				"{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":null,\"message\":\"read file\"}\n",
+				"{\"level\":\"warning\",\"pathname\":\"/some/path\",\"error\":null,\"message\":\"read file\"}\n",
 				func(l *Logger) {
 					l.Warning().String("pathname", "/some/path").Err(nil).Msg("read file")
 				},
 			},
 			{
 				"error is non-nil",
-				"{\"level\":\"warning\",\"pathname\":\"\\/some\\/path\",\"error\":\"bytes.Buffer: too large\",\"message\":\"read file\"}\n",
+				"{\"level\":\"warning\",\"pathname\":\"/some/path\",\"error\":\"bytes.Buffer: too large\",\"message\":\"read file\"}\n",
 				func(l *Logger) {
 					l.Warning().String("pathname", "/some/path").Err(bytes.ErrTooLarge).Msg("read file")
 				},
