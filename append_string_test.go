@@ -109,17 +109,17 @@ func TestString(t *testing.T) {
 // string and the remainder byte slice of the original buffer. On error, the
 // returned byte slice points to the first byte that caused the error indicated.
 //
-//    func ExampleDecode() {
-//        decoded, remainder, err := goejs.DecodedStringFromJSON([]byte("\"\\u0001\\u2318 a\" some extra bytes after final quote"))
-//        if err != nil {
-//            fmt.Println(err)
-//        }
-//        if actual, expected := string(remainder), " some extra bytes after final quote"; actual != expected {
-//            fmt.Printf("Remainder GOT: %#q; WANT: %#q\n", actual, expected)
-//        }
-//        fmt.Printf("%#q", decoded)
-//        // Output: "\x01⌘ a"
-//    }
+//	func ExampleDecode() {
+//	    decoded, remainder, err := goejs.DecodedStringFromJSON([]byte("\"\\u0001\\u2318 a\" some extra bytes after final quote"))
+//	    if err != nil {
+//	        fmt.Println(err)
+//	    }
+//	    if actual, expected := string(remainder), " some extra bytes after final quote"; actual != expected {
+//	        fmt.Printf("Remainder GOT: %#q; WANT: %#q\n", actual, expected)
+//	    }
+//	    fmt.Printf("%#q", decoded)
+//	    // Output: "\x01⌘ a"
+//	}
 func decodedStringFromJSON(buf []byte) (string, []byte, error) {
 	buflen := len(buf)
 	if buflen < 2 {

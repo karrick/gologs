@@ -14,9 +14,10 @@ import (
 // encoding libraries, as shown in the table below.
 //
 // JSON serialization:
-//    NaN: null
-//   -Inf: -1e999
-//   +Inf: 1e999
+//
+//	 NaN: null
+//	-Inf: -1e999
+//	+Inf: 1e999
 func appendEncodedJSONFromFloat(buf []byte, f64 float64) []byte {
 	if math.IsNaN(f64) {
 		return append(buf, "null"...)

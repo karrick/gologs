@@ -236,11 +236,13 @@ func (event *Event) String(name, value string) *Event {
 // if and only if the Event will be logged.
 //
 // To reduce program allocations, prefer this:
-//     logger.Debug().Stringer("address", address).Msg("listening")
+//
+//	logger.Debug().Stringer("address", address).Msg("listening")
 //
 // Rather than this:
-//     logger.Debug().String("address", address.String()).Msg("listening")
-func (event *Event) Stringer(name string, stringer interface{String() string}) *Event {
+//
+//	logger.Debug().String("address", address.String()).Msg("listening")
+func (event *Event) Stringer(name string, stringer interface{ String() string }) *Event {
 	if event == nil {
 		return nil
 	}

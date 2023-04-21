@@ -7,11 +7,11 @@ import "unicode/utf8"
 // appendEncodedJSONFromString appends the JSON encoding of the provided string to the
 // provided byte slice, and returns the modified byte slice.
 //
-//    func ExampleEncode() {
-//        encoded := appendEncodedJSONFromString([]byte("prefix:"), "⌘ a")
-//        fmt.Printf("%s", encoded)
-//        // Output: prefix:"\u0001\u2318 a"
-//    }
+//	func ExampleEncode() {
+//	    encoded := appendEncodedJSONFromString([]byte("prefix:"), "⌘ a")
+//	    fmt.Printf("%s", encoded)
+//	    // Output: prefix:"\u0001\u2318 a"
+//	}
 func appendEncodedJSONFromString(buf []byte, someString string) []byte {
 	buf = append(buf, '"') // prefix buffer with double quote
 

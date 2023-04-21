@@ -22,7 +22,7 @@ type Logger struct {
 // By default, a Logger has a log level of Warning, which is closer to the
 // UNIX philosophy of avoiding unnecessary output.
 //
-//     log := gologs.New(os.Stdout).SetTimeFormatter(gologs.TimeUnix)
+//	log := gologs.New(os.Stdout).SetTimeFormatter(gologs.TimeUnix)
 func New(w io.Writer) *Logger {
 	log := &Logger{
 		event: Event{
@@ -154,22 +154,22 @@ func (log *Logger) Error() *Event {
 // NewWriter creates an io.Writer that conveys all writes it receives to the
 // underlying io.Writer as individual log events.
 //
-//     func main() {
-//         log := gologs.New(os.Stdout).SetTimeFormatter(gologs.TimeUnix)
-//         lw := log.NewWriter()
-//         scanner := bufio.NewScanner(os.Stdin)
-//         for scanner.Scan() {
-//             _, err := lw.Write(scanner.Bytes())
-//             if err != nil {
-//                 fmt.Fprintf(os.Stderr, "%s\n", err)
-//                 os.Exit(1)
-//             }
-//         }
-//         if err := scanner.Err(); err != nil {
-//             fmt.Fprintf(os.Stderr, "%s\n", err)
-//             os.Exit(1)
-//         }
-//     }
+//	func main() {
+//	    log := gologs.New(os.Stdout).SetTimeFormatter(gologs.TimeUnix)
+//	    lw := log.NewWriter()
+//	    scanner := bufio.NewScanner(os.Stdin)
+//	    for scanner.Scan() {
+//	        _, err := lw.Write(scanner.Bytes())
+//	        if err != nil {
+//	            fmt.Fprintf(os.Stderr, "%s\n", err)
+//	            os.Exit(1)
+//	        }
+//	    }
+//	    if err := scanner.Err(); err != nil {
+//	        fmt.Fprintf(os.Stderr, "%s\n", err)
+//	        os.Exit(1)
+//	    }
+//	}
 func (log *Logger) NewWriter(level Level) *Writer {
 	log.mutex.RLock()
 
@@ -196,7 +196,7 @@ func (log *Logger) NewWriter(level Level) *Writer {
 // can be modified to add one or more additional properties for every outgoing
 // log event.
 //
-//     log = log.With().String("s", "value").Bool("b", true).Logger()
+//	log = log.With().String("s", "value").Bool("b", true).Logger()
 func (log *Logger) With() *Intermediate {
 	log.mutex.RLock()
 
