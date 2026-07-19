@@ -310,8 +310,8 @@ ev.Msg("example message")
 ```
 
 ```Go
-✓ DO THIS INSTEAD: Pick the level first: exactly one event is
-  created, and Msg'd once.
+// ✓ DO THIS INSTEAD: Pick the level first: exactly one event is
+//   created, and Msg'd once.
 var ev *gologs.Event
 if strict {
     ev = log.Error()
