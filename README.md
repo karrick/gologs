@@ -265,6 +265,66 @@ control its own log level. It is important that they use that logger
 to log all of their events during their lifetime, in order to be
 effective.
 
+#### Events within a branch (and why branches make concurrency easy)
+
+Each branch is an independent logger wih its own level, its own
+prefix, and, importantly, its own event and its own lock. **No lock is
+shared between branches.** That is what keeps the tree cheap and
+concurrency-friendly: different goroutines can log to different
+branches with zero contention (and, as noted above, a branch's level
+is safe to change while other threads log to it).
+
+Two things about how a *single* branch emits an event are worth
+knowing.
+
+**1. Level filtering is free (and silent).** `Debug()`, `Verbose()`,
+`Info()`, `Warning()`, and `Error()` are gated by that branch's level;
+a call below the level returns an event that does nothing: no
+formatting, no output, no allocation. Logging below your level is
+essentially free. The flip side: a gated-out event never fires, so do
+not hang a *required* side effect off one. (Under `SetError()`, for
+instance, a whole `Warning()`…`Msg()` chain emits nothing — handy for
+silencing a level in tests, as long as you know it is happening.)
+
+**2. One event at a time per branch, and each event must end with
+`Msg`.** To reduce allocations and maintain performance, a branch
+reuses a single event guarded by its lock: any level call acquires
+that lock, and the required `Msg` invocation writes the line and
+releases the lock. So, within one branch:
+
+> **Finish each event with `Msg` before starting the next.**
+
+Every chain ends in `Msg`, so you already do this. The only way to
+trip is to open a *second* event **on the same branch** before
+terminating the first:
+
+```Go
+// ✗ DO NOT DO THIS: Same branch, two events: Warning() takes the
+//   lock, then Error() re-takes it, and the Warning event is never
+//   Msg'd to release it -> self-deadlock.
+ev := log.Warning()
+if strict {
+    ev = log.Error()
+}
+ev.Msg("example message")
+```
+
+```Go
+✓ DO THIS INSTEAD: Pick the level first: exactly one event is
+  created, and Msg'd once.
+var ev *gologs.Event
+if strict {
+    ev = log.Error()
+} else {
+    ev = log.Warning()
+}
+ev.Msg("example message")
+```
+
+Need two events genuinely in flight at once? That is what branches are
+for — `log.With()`…`.Logger()` hands you an independent one (with its
+own lock and reusable event), so there is nothing to contend for.
+
 ### Tracer Logging
 
 I am sure I'm not the only person who wanted to figure out why a
